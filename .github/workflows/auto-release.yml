@@ -56,6 +56,7 @@ jobs:
 
 
       - name: Derive app version from tag
+        id: version
         shell: bash
         run: |
           tag="${GITHUB_REF_NAME}"
@@ -109,21 +110,24 @@ jobs:
         run: .github/scripts/build/android.sh
 
       - name: Install Linux build dependencies
+        if: ${{ !cancelled() && steps.version.outcome == 'success' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libayatana-appindicator3-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libayatana-appindicator3-dev libsecret-1-dev
 
       - name: Build Linux single-file executable
+        if: ${{ !cancelled() && steps.version.outcome == 'success' }}
         run: .github/scripts/build/linux.sh
 
       - name: Upload Android and Linux release assets
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: release-assets-android-linux
           path: |
             dist/ohmyssh_*_android_*.apk
             dist/ohmyssh_*_linux_x64
-          if-no-files-found: error
+          if-no-files-found: warn
 
   build-windows:
     name: Build Windows release
@@ -179,13 +183,14 @@ jobs:
         run: ./.github/scripts/build/windows.ps1
 
       - name: Upload Windows release asset
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: release-assets-windows
           path: |
             dist/ohmyssh_*_windows_x64_raw.zip
             dist/ohmyssh_*_windows_x64.exe
-          if-no-files-found: error
+          if-no-files-found: warn
 
   build-macos:
     name: Build macOS and iOS releases
@@ -211,6 +216,7 @@ jobs:
 
 
       - name: Derive app version from tag
+        id: version
         shell: bash
         run: |
           tag="${GITHUB_REF_NAME}"
@@ -243,34 +249,84 @@ jobs:
         run: .github/scripts/build/macos.sh
 
       - name: Build iOS release IPA
+        if: ${{ !cancelled() && steps.version.outcome == 'success' }}
         run: .github/scripts/build/ios.sh
 
       - name: Upload macOS and iOS release assets
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: release-assets-macos
           path: |
             dist/ohmyssh_*_macos_*.dmg
             dist/ohmyssh_*_ios_*.ipa
-          if-no-files-found: error
+          if-no-files-found: warn
 
   publish:
     name: Publish GitHub prerelease
     needs:
+      - guard
       - build-android-linux
       - build-macos
       - build-windows
-    if: ${{ github.server_url == 'https://github.com' }}
+    if: ${{ !cancelled() && needs.guard.result == 'success' && github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - name: Download release assets
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           path: dist
           pattern: release-assets-*
           merge-multiple: true
+
+      - name: Summarize built assets
+        id: assets
+        shell: bash
+        run: |
+          shopt -s nullglob
+
+          expected=(
+            "Android:dist/ohmyssh_*_android_*.apk"
+            "iOS:dist/ohmyssh_*_ios_*.ipa"
+            "Linux:dist/ohmyssh_*_linux_x64"
+            "macOS:dist/ohmyssh_*_macos_*.dmg"
+            "Windows:dist/ohmyssh_*_windows_x64*"
+          )
+
+          missing=()
+          found=0
+          for entry in "${expected[@]}"; do
+            platform="${entry%%:*}"
+            files=(${entry#*:})
+            if (( ${#files[@]} )); then
+              found=$(( found + ${#files[@]} ))
+              printf 'Built %s: %s\n' "$platform" "${files[*]}"
+            else
+              missing+=("$platform")
+              printf 'Missing %s\n' "$platform"
+            fi
+          done
+
+          if (( found == 0 )); then
+            echo "::error::No release assets were built, nothing to publish."
+            exit 1
+          fi
+
+          if (( ${#missing[@]} )); then
+            missing_list="$(printf '%s, ' "${missing[@]}")"
+            missing_list="${missing_list%, }"
+
+            {
+              printf 'notes<<OHMYSSH_NOTES\n'
+              printf '> Builds failed for: %s. Assets for those platforms are missing from this prerelease.\n' "$missing_list"
+              printf 'OHMYSSH_NOTES\n'
+            } >> "$GITHUB_OUTPUT"
+
+            echo "::warning::Publishing a partial prerelease, missing: $missing_list"
+          fi
 
       - name: Publish GitHub prerelease
         uses: softprops/action-gh-release@v2
@@ -280,6 +336,8 @@ jobs:
           prerelease: true
           generate_release_notes: true
           overwrite_files: true
+          body: ${{ steps.assets.outputs.notes }}
+          fail_on_unmatched_files: false
           files: |
             dist/ohmyssh_*_android_*.apk
             dist/ohmyssh_*_ios_*.ipa
