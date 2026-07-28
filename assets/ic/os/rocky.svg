@@ -1,8 +1,3 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-  <!-- PLACEHOLDER. Same art for every icon on purpose: filenames and call sites
-       are final, artwork is not. Replace this file with the real glyph.
-       Rules: 24x24 viewBox, solid fills, no strokes, no gradients — QIcon tints
-       the whole thing with BlendMode.srcIn, so only the alpha channel matters. -->
-  <path fill="#000" fill-rule="evenodd" d="M6 2h12a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4Zm0 2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6Z"/>
-  <circle fill="#000" cx="12" cy="12" r="3"/>
+  <path fill="#000" d="M11.32 1.02C9.33 1.14 7.44 1.79 5.82 2.9 4.68 3.67 3.67 4.69 2.9 5.82 1.86 7.34 1.23 9.1 1.05 10.92 0.99 11.59 0.98 12.36 1.04 13.01 1.24 15.16 2.06 17.18 3.41 18.87 3.6 19.11 3.85 19.39 4.03 19.58L4.16 19.72 9.74 14.14 15.32 8.56 18.86 12.1 22.39 15.63 22.46 15.42C22.71 14.65 22.87 13.88 22.95 13.09 23.02 12.41 23.02 11.62 22.95 10.92 22.67 8.05 21.27 5.4 19.03 3.53 17.87 2.57 16.5 1.84 15.03 1.42 14.26 1.2 13.49 1.07 12.64 1.01 12.38 1 11.58 1 11.32 1.02ZM11.35 18.03L7.39 21.99 7.48 22.04C8.4 22.45 9.41 22.74 10.41 22.89 11.04 22.98 11.48 23.01 12.18 22.99 12.69 22.99 12.96 22.97 13.4 22.91 15.44 22.66 17.4 21.81 19 20.49 19.37 20.18 19.98 19.6 20.26 19.27L20.38 19.13 17.85 16.59 15.32 14.06 11.35 18.03Z"/>
 </svg>
