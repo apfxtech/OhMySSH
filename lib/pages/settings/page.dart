@@ -15,6 +15,7 @@ import '../../theme/theme.dart';
 import '../../widgets/app_version.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/password_prompt.dart';
+import 'icon_gallery.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.onLocked});
@@ -26,8 +27,13 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  static const _tapsForGallery = 7;
+  static const _tapWindow = Duration(seconds: 2);
+
   bool _autoLogin = false;
   bool _autoLoginAvailable = true;
+  int _versionTaps = 0;
+  DateTime? _lastVersionTap;
 
   @override
   void initState() {
@@ -43,6 +49,23 @@ class _SettingsPageState extends State<SettingsPage> {
       _autoLoginAvailable = available;
       _autoLogin = enabled;
     });
+  }
+
+  /// Seven taps on the version label opens the OS icon gallery. The counter
+  /// resets whenever a tap arrives late, so an idle tap never accumulates.
+  void _countVersionTap() {
+    final now = DateTime.now();
+    final last = _lastVersionTap;
+    _versionTaps = (last == null || now.difference(last) > _tapWindow)
+        ? 1
+        : _versionTaps + 1;
+    _lastVersionTap = now;
+    if (_versionTaps < _tapsForGallery) return;
+    _versionTaps = 0;
+    _lastVersionTap = null;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const IconGalleryPage()),
+    );
   }
 
   void _toast(String message) {
@@ -177,7 +200,11 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
 
             const SizedBox(height: 18),
-            const AppVersionLabel(),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _countVersionTap,
+              child: const AppVersionLabel(),
+            ),
             const SizedBox(height: 10),
           ],
         ),
