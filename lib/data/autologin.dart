@@ -19,8 +19,13 @@ class AutoLogin {
 
   bool? _available;
   String? _unavailableReason;
+  bool _unavailableIsExpected = false;
 
   String? get unavailableReason => _unavailableReason;
+
+  /// True when the keystore is missing because of how this build was signed or
+  /// which desktop session it runs in, not because something went wrong.
+  bool get unavailableIsExpected => _unavailableIsExpected;
 
   /// Probes with a write+delete, not a read: on a sandboxed macOS build reading
   /// a missing key succeeds while writing fails with -34018.
@@ -32,31 +37,38 @@ class AutoLogin {
       await _storage.write(key: probeKey, value: 'ok');
       await _storage.delete(key: probeKey);
       _unavailableReason = null;
+      _unavailableIsExpected = false;
       Log.info(_scope, 'keystore available (write probe passed)');
       return _available = true;
     } catch (error, stackTrace) {
+      _unavailableIsExpected = isExpectedFailure(error);
       _unavailableReason = describeFailure(error);
-      Log.error(_scope, 'keystore probe failed: $error', stackTrace);
-      Log.warn(_scope, 'auto-unlock disabled: $_unavailableReason');
+      if (!_unavailableIsExpected) {
+        Log.error(_scope, 'keystore probe failed: $error', stackTrace);
+      }
+      Log.warn(_scope, 'auto-unlock off: $_unavailableReason');
+      final hint = _developerHint(error);
+      if (hint != null) Log.info(_scope, hint);
       return _available = false;
     }
   }
 
   Future<bool> isEnabled() async {
+    if (_available == false) return false;
     try {
       return await _storage.containsKey(key: _key);
     } catch (error, stackTrace) {
-      Log.error(_scope, 'containsKey failed', stackTrace);
-      Log.error(_scope, error);
+      _report('containsKey failed', error, stackTrace);
       return false;
     }
   }
 
   Future<String?> readPassword() async {
+    if (_available == false) return null;
     try {
       return await _storage.read(key: _key);
     } catch (error, stackTrace) {
-      Log.error(_scope, 'read failed: $error', stackTrace);
+      _report('read failed', error, stackTrace);
       return null;
     }
   }
@@ -66,40 +78,77 @@ class AutoLogin {
       await _storage.write(key: _key, value: password);
       Log.info(_scope, 'auto-unlock enabled');
     } catch (error, stackTrace) {
-      Log.error(_scope, 'write failed: $error', stackTrace);
+      _report('write failed', error, stackTrace);
       throw AutoLoginException(describeFailure(error));
     }
   }
 
   /// Never throws: revoking must always succeed from the user's side.
   Future<void> disable() async {
+    if (_available == false) return;
     try {
       await _storage.delete(key: _key);
       Log.info(_scope, 'auto-unlock disabled');
     } catch (error, stackTrace) {
-      Log.error(_scope, 'delete failed: $error', stackTrace);
+      _report('delete failed', error, stackTrace);
     }
+  }
+
+  /// Expected failures get one warning line; only genuine faults are logged as
+  /// errors with a stack trace.
+  static void _report(String what, Object error, StackTrace stackTrace) {
+    if (isExpectedFailure(error)) {
+      Log.warn(_scope, '$what: ${describeFailure(error)}');
+      return;
+    }
+    Log.error(_scope, '$what: $error', stackTrace);
+  }
+
+  /// A keystore the platform simply does not hand out: an ad-hoc signed macOS
+  /// build with no keychain entitlement, a locked or absent keychain, a Linux
+  /// session with no secret service, or a platform with no plugin at all.
+  static bool isExpectedFailure(Object error) {
+    final text = '$error'.toLowerCase();
+    return text.contains('-34018') ||
+        text.contains('-25291') ||
+        text.contains('-25308') ||
+        text.contains('libsecret') ||
+        text.contains('secret service') ||
+        text.contains('missingpluginexception');
   }
 
   static String describeFailure(Object error) {
     final text = '$error';
     if (text.contains('-34018')) {
-      return 'macOS keychain refused access (-34018). This build is signed '
-          'ad-hoc; pick a signing Team and add Keychain Sharing in Xcode — '
-          'see the comment in macos/Runner/DebugProfile.entitlements.';
+      return 'macOS denies keychain access to this build (-34018) because it '
+          'is signed ad-hoc.';
     }
     if (text.contains('-25291')) {
       return 'No keychain is available (-25291).';
     }
+    if (text.contains('-25308')) {
+      return 'The keychain is locked (-25308).';
+    }
     if (text.contains('-25300')) {
       return 'Keychain item not found (-25300).';
     }
-    if (text.toLowerCase().contains('libsecret') ||
-        text.toLowerCase().contains('secret service')) {
+    final lower = text.toLowerCase();
+    if (lower.contains('libsecret') || lower.contains('secret service')) {
       return 'No secret service on this Linux session — install libsecret and '
           'run a keyring daemon.';
     }
+    if (lower.contains('missingpluginexception')) {
+      return 'This platform has no keystore plugin.';
+    }
     return text;
+  }
+
+  /// Shown in the log only: the user cannot act on it, the developer can.
+  static String? _developerHint(Object error) {
+    if (!'$error'.contains('-34018')) return null;
+    return 'to enable auto-unlock locally, pick a signing Team and add '
+        'Keychain Sharing in Xcode — see the comment in '
+        'macos/Runner/DebugProfile.entitlements.';
   }
 }
 
