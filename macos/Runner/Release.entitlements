@@ -4,5 +4,11 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Outbound TCP to SSH hosts. Without this the sandbox blocks every connect. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Import/export of the vault and SFTP transfers via the file picker. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
 </dict>
 </plist>

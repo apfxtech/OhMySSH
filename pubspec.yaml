@@ -1,5 +1,5 @@
 name: ohmyssh
-description: "A new Flutter project."
+description: "Simple, reliable SSH/SFTP client."
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -10,6 +10,22 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # SSH/SFTP core — pure Dart, no FFI, works on all five native targets.
+  dartssh2: ^2.22.4
+  xterm: ^4.0.0
+
+  # Vault: AES-GCM + PBKDF2 over a master password.
+  cryptography: ^2.9.0
+
+  flutter_svg: ^2.3.0
+  file_picker: ^11.0.2
+  file_saver: ^0.4.0
+  # Held at 12.x: share_plus 13 wants win32 ^6 while file_picker 11 wants ^5.9.
+  share_plus: ^12.0.2
+  shared_preferences: ^2.5.5
+  path_provider: ^2.1.6
+  flutter_foreground_task: ^9.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -17,3 +33,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/ic/os/
+    - assets/ic/action/
+    - assets/ic/nav/
+    - assets/ic/state/
+    - assets/ic/file/
