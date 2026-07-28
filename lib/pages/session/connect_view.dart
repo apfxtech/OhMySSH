@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../components/icon.dart';
+import '../../ssh/probe.dart';
 import '../../ssh/session.dart';
 import '../../theme/theme.dart';
 
@@ -13,6 +15,7 @@ class ConnectView extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final failed = session.state == SessionState.failed;
+    final osId = session.profile?.osId ?? session.host.osId;
 
     return Center(
       child: SingleChildScrollView(
@@ -23,6 +26,16 @@ class ConnectView extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Center(
+                child: QIconBadge.svg(
+                  asset: osIconAsset(osId),
+                  color: Color(osColorValue(osId)),
+                  size: 72,
+                  iconSize: 44,
+                  borderRadius: 20,
+                ),
+              ),
+              const SizedBox(height: 16),
               Text(
                 session.host.displayLabel,
                 textAlign: TextAlign.center,
