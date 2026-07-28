@@ -10,15 +10,6 @@ import '../../widgets/credentials_form.dart';
 import '../../widgets/fields.dart';
 import '../identities/editor.dart';
 
-enum _UserMode {
-  saved('Saved user', 'Reuse a login from the Users list'),
-  inline('Only this system', 'A one-off login stored on this system');
-
-  const _UserMode(this.label, this.hint);
-  final String label;
-  final String hint;
-}
-
 class HostEditorPage extends StatefulWidget {
   const HostEditorPage({super.key, this.host});
 
@@ -35,7 +26,6 @@ class _HostEditorPageState extends State<HostEditorPage> {
   late final TextEditingController _note;
   late final CredentialsController _credentials;
 
-  late _UserMode _userMode;
   String? _identityId;
   String? _groupId;
   String? _knownHostKey;
@@ -54,9 +44,6 @@ class _HostEditorPageState extends State<HostEditorPage> {
     _identityId = host?.identityId;
     _groupId = host?.groupId;
     _knownHostKey = host?.knownHostKey;
-    _userMode = (host?.hasInlineIdentity ?? _isNew)
-        ? _UserMode.inline
-        : _UserMode.saved;
   }
 
   @override
@@ -88,7 +75,7 @@ class _HostEditorPageState extends State<HostEditorPage> {
     }
 
     Identity? inline;
-    if (_userMode == _UserMode.inline && !_credentials.isEmpty) {
+    if (_identityId == null && !_credentials.isEmpty) {
       // An untouched inline form means "no user yet", not an error: the system
       // saves, it just cannot connect until it has one.
       final problem = _credentials.validate();
@@ -108,9 +95,9 @@ class _HostEditorPageState extends State<HostEditorPage> {
       label: _label.text.trim(),
       hostname: hostname,
       port: port,
-      // The two are mutually exclusive: whichever mode is showing wins, and the
-      // other is cleared so a stale reference cannot resurface.
-      identityId: _userMode == _UserMode.saved ? _identityId : null,
+      // The two are mutually exclusive: a picked user wins, and the inline form
+      // only fills in while none is picked.
+      identityId: _identityId,
       inlineIdentity: inline,
       groupId: _groupId,
       note: note.isEmpty ? null : note,
@@ -191,27 +178,20 @@ class _HostEditorPageState extends State<HostEditorPage> {
             ),
 
             const QFormLabel('User'),
-            _ModeToggle(
-              mode: _userMode,
-              onChanged: (mode) => setState(() => _userMode = mode),
+            _PickerCard(
+              icon: Icons.person_outline,
+              title: _identityLabel(store),
+              subtitle: _identityId != null
+                  ? 'Tap to change, or clear it to type a login here'
+                  : store.identities.isEmpty
+                  ? 'No saved users yet — type a login below, or tap to create one'
+                  : 'Tap to reuse a saved user, or type a login below',
+              onTap: () => _pickIdentity(store),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(2, 6, 2, 10),
-              child: Text(
-                _userMode.hint,
-                style: TextStyle(color: colors.textMuted, fontSize: 11.5),
-              ),
-            ),
-            if (_userMode == _UserMode.saved)
-              _PickerCard(
-                icon: Icons.person_outline,
-                title: _identityLabel(store),
-                subtitle: store.identities.isEmpty
-                    ? 'No saved users yet — tap to create one'
-                    : 'Tap to choose or create a user',
-                onTap: () => _pickIdentity(store),
-              )
-            else ...[
+            // A picked user carries its own credentials, so the manual fields
+            // only show while none is picked.
+            if (_identityId == null) ...[
+              const SizedBox(height: 12),
               CredentialsEditor(controller: _credentials),
               const SizedBox(height: 6),
               Align(
@@ -253,7 +233,7 @@ class _HostEditorPageState extends State<HostEditorPage> {
   }
 
   String _identityLabel(VaultStore store) {
-    if (_identityId == null) return 'No user assigned';
+    if (_identityId == null) return 'No saved user';
     final identity = store.identityById(_identityId);
     return identity == null
         ? 'Missing user'
@@ -278,10 +258,7 @@ class _HostEditorPageState extends State<HostEditorPage> {
     final identity = _credentials.build(id: newId(), label: name);
     await VaultStore.instance.saveIdentity(identity);
     if (!mounted) return;
-    setState(() {
-      _identityId = identity.id;
-      _userMode = _UserMode.saved;
-    });
+    setState(() => _identityId = identity.id);
     _toast('${identity.label} added to Users');
   }
 
@@ -301,7 +278,12 @@ class _HostEditorPageState extends State<HostEditorPage> {
           icon: Icons.person_add_alt,
           isAction: true,
         ),
-        const PickOption(null, 'No user', icon: Icons.block),
+        const PickOption(
+          null,
+          'No saved user',
+          subtitle: 'Type the login on this system',
+          icon: Icons.edit_outlined,
+        ),
         for (final identity in store.identities)
           PickOption(
             identity.id,
@@ -362,54 +344,6 @@ class _HostEditorPageState extends State<HostEditorPage> {
       return;
     }
     setState(() => _groupId = selected.value);
-  }
-}
-
-class _ModeToggle extends StatelessWidget {
-  const _ModeToggle({required this.mode, required this.onChanged});
-
-  final _UserMode mode;
-  final ValueChanged<_UserMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          for (final option in _UserMode.values)
-            Expanded(
-              child: Material(
-                color: mode == option ? colors.accent : Colors.transparent,
-                borderRadius: BorderRadius.circular(9),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: () => onChanged(option),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: Text(
-                      option.label,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: mode == option
-                            ? colors.onAccent
-                            : colors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 }
 

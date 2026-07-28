@@ -19,11 +19,14 @@ class CredentialsController extends ChangeNotifier {
   final password = TextEditingController();
   final passphrase = TextEditingController();
 
-  AuthKind _kind = AuthKind.password;
   String? _privateKey;
   String? _keyStatus;
 
-  AuthKind get kind => _kind;
+  /// Derived rather than chosen: a key in hand means key auth, and without one
+  /// the password takes over.
+  AuthKind get kind =>
+      _privateKey == null ? AuthKind.password : AuthKind.privateKey;
+
   String? get privateKey => _privateKey;
   String? get keyStatus => _keyStatus;
 
@@ -36,45 +39,35 @@ class CredentialsController extends ChangeNotifier {
     username.text = identity?.username ?? '';
     password.text = identity?.password ?? '';
     passphrase.text = identity?.passphrase ?? '';
-    _kind = identity?.kind ?? AuthKind.password;
     _privateKey = identity?.privateKey;
     _keyStatus = _privateKey == null ? null : describeKey(_privateKey!);
-    notifyListeners();
-  }
-
-  set kind(AuthKind value) {
-    if (_kind == value) return;
-    _kind = value;
     notifyListeners();
   }
 
   void setPrivateKey(String? pem) {
     _privateKey = pem;
     _keyStatus = pem == null ? null : describeKey(pem);
-    if (pem != null) _kind = AuthKind.privateKey;
     notifyListeners();
   }
 
   /// Returns an error message, or null when the form is usable.
   String? validate() {
     if (username.text.trim().isEmpty) return 'Username is required';
-    if (_kind == AuthKind.privateKey && (_privateKey?.isEmpty ?? true)) {
-      return 'Import a private key';
-    }
     return null;
   }
 
   Identity build({required String id, String? label}) {
     final user = username.text.trim();
     final resolved = (label ?? '').trim();
+    final key = _privateKey;
     return Identity(
       id: id,
       label: resolved.isEmpty ? user : resolved,
       username: user,
-      kind: _kind,
-      password: _kind == AuthKind.password ? password.text : null,
-      privateKey: _kind == AuthKind.privateKey ? _privateKey : null,
-      passphrase: _kind == AuthKind.privateKey && passphrase.text.isNotEmpty
+      kind: kind,
+      password: key == null && password.text.isNotEmpty ? password.text : null,
+      privateKey: key,
+      passphrase: key != null && passphrase.text.isNotEmpty
           ? passphrase.text
           : null,
     );
@@ -155,79 +148,27 @@ class CredentialsEditor extends StatelessWidget {
             autofocus: autofocusUsername,
           ),
           const SizedBox(height: 12),
-          _KindToggle(
-            kind: controller.kind,
-            onChanged: (value) => controller.kind = value,
+          _KeyCard(
+            status: controller.keyStatus,
+            onImport: () => _importKey(context),
+            onClear: controller.privateKey == null
+                ? null
+                : () => controller.setPrivateKey(null),
           ),
-          const SizedBox(height: 12),
-          if (controller.kind == AuthKind.password)
+          const SizedBox(height: 10),
+          // No key means password auth, so the two fields swap places instead
+          // of asking for a mode first.
+          if (controller.privateKey == null)
             QTextField(
               controller: controller.password,
               label: 'Password',
               obscure: true,
             )
-          else ...[
-            _KeyCard(
-              status: controller.keyStatus,
-              onImport: () => _importKey(context),
-              onClear: controller.privateKey == null
-                  ? null
-                  : () => controller.setPrivateKey(null),
-            ),
-            const SizedBox(height: 10),
+          else
             QTextField(
               controller: controller.passphrase,
               label: 'Key passphrase (if encrypted)',
               obscure: true,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _KindToggle extends StatelessWidget {
-  const _KindToggle({required this.kind, required this.onChanged});
-
-  final AuthKind kind;
-  final ValueChanged<AuthKind> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          for (final option in AuthKind.values)
-            Expanded(
-              child: Material(
-                color: kind == option ? colors.accent : Colors.transparent,
-                borderRadius: BorderRadius.circular(9),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: () => onChanged(option),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: Text(
-                      option == AuthKind.password ? 'Password' : 'Private key',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: kind == option
-                            ? colors.onAccent
-                            : colors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ),
         ],
       ),
@@ -261,7 +202,7 @@ class _KeyCard extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              status ?? 'No private key imported',
+              status ?? 'No private key — the password below is used',
               style: TextStyle(
                 color: loaded ? colors.textPrimary : colors.textMuted,
                 fontSize: 13,
