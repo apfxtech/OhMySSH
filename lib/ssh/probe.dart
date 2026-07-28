@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dartssh2/dartssh2.dart';
+import '../services/log.dart';
 
 class HostMetrics {
   const HostMetrics({
@@ -155,7 +156,9 @@ Future<String> _tryRun(SSHClient client, String command) async {
       await client.run(command, stderr: false),
       allowMalformed: true,
     );
-  } catch (_) {
+  } catch (error) {
+    // A missing command is normal — that is how the family is detected.
+    Log.info('probe', 'command failed, treating as empty: $command ($error)');
     return '';
   }
 }

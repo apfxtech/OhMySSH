@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../data/models.dart';
 import '../data/store.dart';
 import 'session.dart';
+import '../services/log.dart';
 
 class SessionManager extends ChangeNotifier {
   SessionManager._();
@@ -50,6 +51,7 @@ class SessionManager extends ChangeNotifier {
       );
     };
 
+    Log.info('sessions', 'opening ${host.endpoint}');
     session.addListener(_onSessionChanged);
     _sessions.add(session);
     _activeId = session.id;

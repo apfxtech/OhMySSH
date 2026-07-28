@@ -17,6 +17,7 @@ class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.centerTitle = false,
     this.bottom,
     this.elevation = 0,
+    this.titleSpacing,
   });
 
   final String title;
@@ -30,6 +31,8 @@ class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool centerTitle;
   final PreferredSizeWidget? bottom;
   final double elevation;
+
+  final double? titleSpacing;
 
   static const double toolbarHeight = 68;
 
@@ -54,9 +57,11 @@ class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
         elevation: elevation,
         scrolledUnderElevation: elevation,
         centerTitle: centerTitle,
-        titleSpacing: 0,
+        titleSpacing: titleSpacing,
         leading: leading,
-        actions: actions,
+        actions: actions == null
+            ? null
+            : [...actions!, const SizedBox(width: 6)],
         bottom: bottom,
         title: _PageTitle(
           title: title,
@@ -152,14 +157,27 @@ class QPageAppBarAction extends StatelessWidget {
     required this.tooltip,
     required this.icon,
     required this.onPressed,
-  });
+  }) : native = false;
+
+  /// Native tooltips here: the custom wide tooltip anchors to a fixed offset
+  /// from the top of the screen and lands in the wrong place on this page.
+  const QPageAppBarAction.native({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  }) : native = true;
 
   final String tooltip;
   final Widget icon;
   final VoidCallback? onPressed;
+  final bool native;
 
   @override
   Widget build(BuildContext context) {
+    if (native) {
+      return IconButton(tooltip: tooltip, onPressed: onPressed, icon: icon);
+    }
     return QPageAppBarTooltip(
       message: tooltip,
       child: IconButton(onPressed: onPressed, icon: icon),

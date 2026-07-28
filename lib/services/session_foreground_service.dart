@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../ssh/manager.dart';
+import 'log.dart';
 
 /// Keeps SSH sessions alive on Android while the app is backgrounded.
 /// Android-only; a no-op elsewhere.
@@ -76,7 +77,7 @@ class SessionForegroundService with WidgetsBindingObserver {
 
   void _enqueue(Future<void> Function() op) {
     _pending = _pending.then((_) => op()).catchError((Object error) {
-      debugPrint('[SessionForegroundService] op failed: $error');
+      Log.error('foreground-service', 'op failed: $error');
     });
   }
 
@@ -133,7 +134,7 @@ class SessionForegroundService with WidgetsBindingObserver {
     if (result is ServiceRequestSuccess) {
       _serviceRunning = true;
     } else if (result is ServiceRequestFailure) {
-      debugPrint('[SessionForegroundService] start failed: ${result.error}');
+      Log.error('foreground-service', 'start failed: ${result.error}');
     }
   }
 
@@ -145,7 +146,7 @@ class SessionForegroundService with WidgetsBindingObserver {
         notificationText: _notificationText,
       );
     } catch (error) {
-      debugPrint('[SessionForegroundService] update failed: $error');
+      Log.error('foreground-service', 'update failed: $error');
     }
   }
 
@@ -154,7 +155,7 @@ class SessionForegroundService with WidgetsBindingObserver {
     _serviceRunning = false;
     final result = await FlutterForegroundTask.stopService();
     if (result is ServiceRequestFailure) {
-      debugPrint('[SessionForegroundService] stop failed: ${result.error}');
+      Log.error('foreground-service', 'stop failed: ${result.error}');
     }
   }
 }

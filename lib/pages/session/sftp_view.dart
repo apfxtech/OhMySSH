@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -12,6 +11,8 @@ import '../../components/icon.dart';
 import '../../ssh/session.dart';
 import '../../theme/theme.dart';
 import '../../widgets/fields.dart';
+import 'file_editor.dart';
+import '../../services/log.dart';
 
 class SftpView extends StatefulWidget {
   const SftpView({super.key, required this.session});
@@ -25,10 +26,15 @@ class SftpView extends StatefulWidget {
 class _SftpViewState extends State<SftpView> {
   SftpClient? _sftp;
   String _path = '.';
-  List<SftpName> _entries = const [];
+  List<SftpName> _folders = const [];
+  List<SftpName> _files = const [];
   bool _loading = true;
   String? _error;
   _Transfer? _transfer;
+
+  /// Keyed by filename, so it must be cleared on every navigation.
+  final Set<String> _selected = <String>{};
+  bool _selectionMode = false;
 
   @override
   void initState() {
@@ -43,7 +49,8 @@ class _SftpViewState extends State<SftpView> {
       if (!mounted) return;
       _sftp = sftp;
       await _listDir(home);
-    } catch (error) {
+    } catch (error, stackTrace) {
+      Log.error('sftp', 'could not open SFTP channel: $error', stackTrace);
       if (mounted) {
         setState(() {
           _loading = false;
@@ -59,23 +66,30 @@ class _SftpViewState extends State<SftpView> {
     setState(() {
       _loading = true;
       _error = null;
+      _selected.clear();
+      _selectionMode = false;
     });
     try {
       final names = await sftp.listdir(path);
       names.removeWhere((n) => n.filename == '.' || n.filename == '..');
-      names.sort((a, b) {
-        final aDir = a.attr.isDirectory;
-        final bDir = b.attr.isDirectory;
-        if (aDir != bDir) return aDir ? -1 : 1;
-        return a.filename.toLowerCase().compareTo(b.filename.toLowerCase());
-      });
+
+      int byName(SftpName a, SftpName b) =>
+          a.filename.toLowerCase().compareTo(b.filename.toLowerCase());
+
+      final folders = names.where((n) => n.attr.isDirectory).toList()
+        ..sort(byName);
+      final files = names.where((n) => !n.attr.isDirectory).toList()
+        ..sort(byName);
+
       if (!mounted) return;
       setState(() {
         _path = path;
-        _entries = names;
+        _folders = folders;
+        _files = files;
         _loading = false;
       });
-    } catch (error) {
+    } catch (error, stackTrace) {
+      Log.error('sftp', 'listdir $path failed: $error', stackTrace);
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -87,56 +101,142 @@ class _SftpViewState extends State<SftpView> {
   String _join(String base, String name) =>
       base.endsWith('/') ? '$base$name' : '$base/$name';
 
-  String get _parentPath {
-    final trimmed = _path.endsWith('/') && _path.length > 1
-        ? _path.substring(0, _path.length - 1)
-        : _path;
-    final cut = trimmed.lastIndexOf('/');
-    if (cut <= 0) return '/';
-    return trimmed.substring(0, cut);
+  void _toggleSelect(SftpName entry) {
+    setState(() {
+      if (!_selected.add(entry.filename)) _selected.remove(entry.filename);
+      _selectionMode = _selected.isNotEmpty;
+    });
   }
 
-  Future<void> _download(SftpName entry) async {
-    final sftp = _sftp;
-    if (sftp == null) return;
-    final remotePath = _join(_path, entry.filename);
-    final size = entry.attr.size ?? 0;
+  void _enterSelection(SftpName entry) {
+    setState(() {
+      _selectionMode = true;
+      _selected
+        ..clear()
+        ..add(entry.filename);
+    });
+  }
 
-    String? destination;
-    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-      destination = await FilePicker.saveFile(
+  void _exitSelection() {
+    setState(() {
+      _selectionMode = false;
+      _selected.clear();
+    });
+  }
+
+  void _selectAll() {
+    final all = [..._folders, ..._files].map((e) => e.filename);
+    setState(() {
+      if (_selected.length == all.length) {
+        _selected.clear();
+        _selectionMode = false;
+      } else {
+        _selected
+          ..clear()
+          ..addAll(all);
+        _selectionMode = true;
+      }
+    });
+  }
+
+  List<SftpName> get _selectedEntries => [
+    ..._folders,
+    ..._files,
+  ].where((e) => _selected.contains(e.filename)).toList();
+
+  /// Directories are skipped: recursive download is not supported.
+  Future<void> _downloadSelected() async {
+    final entries = _selectedEntries.where((e) => !e.attr.isDirectory).toList();
+    final skipped = _selected.length - entries.length;
+    if (entries.isEmpty) {
+      _toast('Select at least one file');
+      return;
+    }
+
+    String? directory;
+    if (_isDesktop) {
+      directory = await FilePicker.getDirectoryPath(
+        dialogTitle:
+            'Download ${entries.length} file'
+            '${entries.length == 1 ? '' : 's'} to…',
+      );
+      if (directory == null) return;
+    }
+
+    var done = 0;
+    for (final entry in entries) {
+      try {
+        await _downloadOne(entry, directory: directory);
+        done++;
+      } catch (error, stackTrace) {
+        _fail(entry.filename, error, stackTrace);
+        break;
+      }
+    }
+
+    if (mounted) setState(() => _transfer = null);
+    _exitSelection();
+    _toast(
+      'Downloaded $done file${done == 1 ? '' : 's'}'
+      '${skipped > 0 ? ' · $skipped folder${skipped == 1 ? '' : 's'} skipped' : ''}',
+    );
+  }
+
+  /// Exactly one of [savePath] / [directory] may be set.
+  Future<void> _downloadOne(
+    SftpName entry, {
+    String? savePath,
+    String? directory,
+  }) async {
+    final sftp = _sftp!;
+    setState(
+      () =>
+          _transfer = _Transfer(entry.filename, entry.attr.size ?? 0, 0, true),
+    );
+
+    final target =
+        savePath ??
+        (directory == null
+            ? null
+            : '$directory${Platform.pathSeparator}${entry.filename}');
+
+    final file = await sftp.open(_join(_path, entry.filename));
+    try {
+      if (target != null) {
+        await file.downloadTo(
+          File(target).openWrite(),
+          onProgress: _onProgress,
+          closeDestination: true,
+        );
+      } else {
+        final bytes = await file.readBytes();
+        await FileSaver.instance.saveAs(
+          name: entry.filename,
+          bytes: Uint8List.fromList(bytes),
+          mimeType: MimeType.other,
+          includeExtension: false,
+        );
+      }
+    } finally {
+      await file.close();
+    }
+  }
+
+  Future<void> _downloadSingle(SftpName entry) async {
+    String? savePath;
+    if (_isDesktop) {
+      savePath = await FilePicker.saveFile(
         dialogTitle: 'Save ${entry.filename}',
         fileName: entry.filename,
       );
-      if (destination == null) return;
+      if (savePath == null) return;
     }
 
-    setState(() => _transfer = _Transfer(entry.filename, size, 0, true));
     try {
-      final file = await sftp.open(remotePath);
-      try {
-        if (destination != null) {
-          final sink = File(destination).openWrite();
-          await file.downloadTo(
-            sink,
-            onProgress: _onProgress,
-            closeDestination: true,
-          );
-        } else {
-          final bytes = await file.readBytes();
-          await FileSaver.instance.saveAs(
-            name: entry.filename,
-            bytes: Uint8List.fromList(bytes),
-            mimeType: MimeType.other,
-            includeExtension: false,
-          );
-        }
-      } finally {
-        await file.close();
-      }
+      await _downloadOne(entry, savePath: savePath);
       _toast('Downloaded ${entry.filename}');
-    } catch (error) {
-      _toast('Download failed: $error');
+    } catch (error, stackTrace) {
+      _fail('Download failed', error, stackTrace);
     } finally {
       if (mounted) setState(() => _transfer = null);
     }
@@ -159,8 +259,9 @@ class _SftpViewState extends State<SftpView> {
         bytes = await File(platformFile.path!).readAsBytes();
       }
       if (bytes == null) continue;
+      final payload = bytes;
 
-      setState(() => _transfer = _Transfer(name, bytes!.length, 0, false));
+      setState(() => _transfer = _Transfer(name, payload.length, 0, false));
       try {
         final remote = await sftp.open(
           _join(_path, name),
@@ -170,17 +271,46 @@ class _SftpViewState extends State<SftpView> {
               SftpFileOpenMode.truncate,
         );
         try {
-          await remote.writeBytes(bytes);
+          await remote.writeBytes(payload);
         } finally {
           await remote.close();
         }
-      } catch (error) {
-        _toast('Upload failed: $error');
+      } catch (error, stackTrace) {
+        _fail('Upload failed', error, stackTrace);
         break;
       }
     }
 
     if (mounted) setState(() => _transfer = null);
+    await _listDir(_path);
+  }
+
+  Future<void> _deleteSelected() async {
+    final entries = _selectedEntries;
+    if (entries.isEmpty) return;
+    final confirmed = await confirmDestructive(
+      context,
+      title: 'Delete ${entries.length} item${entries.length == 1 ? '' : 's'}?',
+      message:
+          'They will be removed on the remote system. '
+          'This cannot be undone.',
+    );
+    if (!confirmed) return;
+
+    final sftp = _sftp!;
+    for (final entry in entries) {
+      try {
+        final target = _join(_path, entry.filename);
+        if (entry.attr.isDirectory) {
+          await sftp.rmdir(target);
+        } else {
+          await sftp.remove(target);
+        }
+      } catch (error, stackTrace) {
+        _fail(entry.filename, error, stackTrace);
+        break;
+      }
+    }
     await _listDir(_path);
   }
 
@@ -205,8 +335,8 @@ class _SftpViewState extends State<SftpView> {
         await sftp.remove(target);
       }
       await _listDir(_path);
-    } catch (error) {
-      _toast('Delete failed: $error');
+    } catch (error, stackTrace) {
+      _fail('Delete failed', error, stackTrace);
     }
   }
 
@@ -223,8 +353,8 @@ class _SftpViewState extends State<SftpView> {
     try {
       await sftp.mkdir(_join(_path, name));
       await _listDir(_path);
-    } catch (error) {
-      _toast('Could not create: $error');
+    } catch (error, stackTrace) {
+      _fail('Could not create', error, stackTrace);
     }
   }
 
@@ -242,9 +372,24 @@ class _SftpViewState extends State<SftpView> {
     try {
       await sftp.rename(_join(_path, entry.filename), _join(_path, name));
       await _listDir(_path);
-    } catch (error) {
-      _toast('Rename failed: $error');
+    } catch (error, stackTrace) {
+      _fail('Rename failed', error, stackTrace);
     }
+  }
+
+  Future<void> _edit(SftpName entry) async {
+    final sftp = _sftp;
+    if (sftp == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RemoteFileEditor(
+          sftp: sftp,
+          path: _join(_path, entry.filename),
+          name: entry.filename,
+        ),
+      ),
+    );
+    if (mounted) await _listDir(_path);
   }
 
   void _onProgress(int bytes) {
@@ -260,18 +405,66 @@ class _SftpViewState extends State<SftpView> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _fail(String what, Object error, [StackTrace? stackTrace]) {
+    Log.error('sftp', '$what: $error', stackTrace);
+    _toast('$what: $error');
+  }
+
+  static bool get _isDesktop =>
+      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+
+  void _openEntry(SftpName entry) {
+    if (_selectionMode) {
+      _toggleSelect(entry);
+      return;
+    }
+    if (entry.attr.isDirectory) {
+      _listDir(_join(_path, entry.filename));
+      return;
+    }
+    if (isProbablyText(entry)) {
+      _edit(entry);
+    } else {
+      _downloadSingle(entry);
+    }
+  }
+
+  void _runAction(_EntryAction action, SftpName entry) {
+    switch (action) {
+      case _EntryAction.edit:
+        _edit(entry);
+      case _EntryAction.download:
+        _downloadSingle(entry);
+      case _EntryAction.rename:
+        _rename(entry);
+      case _EntryAction.delete:
+        _delete(entry);
+      case _EntryAction.select:
+        _enterSelection(entry);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
     return Column(
       children: [
+        if (_selectionMode)
+          _SelectionBar(
+            count: _selected.length,
+            onCancel: _exitSelection,
+            onSelectAll: _selectAll,
+            onDownload: _downloadSelected,
+            onDelete: _deleteSelected,
+          )
+        else
+          _Breadcrumbs(path: _path, onNavigate: _listDir),
         _Toolbar(
-          path: _path,
-          onUp: _path == '/' ? null : () => _listDir(_parentPath),
           onRefresh: () => _listDir(_path),
           onUpload: _sftp == null ? null : _upload,
           onNewFolder: _sftp == null ? null : _makeDirectory,
+          counts: '${_folders.length} folders · ${_files.length} files',
         ),
         if (_transfer != null) _TransferBar(transfer: _transfer!),
         Expanded(
@@ -284,27 +477,21 @@ class _SftpViewState extends State<SftpView> {
               title: 'Could not read this directory',
               message: error,
             ),
-            _ when _entries.isEmpty => const QEmptyView(
-              icon: Icons.folder,
+            _ when _folders.isEmpty && _files.isEmpty => const QEmptyView(
+              icon: Icons.folder_open,
               title: 'Empty directory',
               message: 'Nothing here yet.',
             ),
-            _ => SingleChildScrollView(
+            _ => ListView(
               padding: const EdgeInsets.only(top: 10, bottom: 20),
-              child: GroupedCardList<SftpName>(
-                items: _entries,
-                onTap: (entry) => () {
-                  if (entry.attr.isDirectory) {
-                    _listDir(_join(_path, entry.filename));
-                  } else {
-                    _download(entry);
-                  }
-                },
-                itemBuilder: (context, entry) => _EntryRow(
-                  entry: entry,
-                  onAction: (action) => _runAction(action, entry),
-                ),
-              ),
+              children: [
+                if (_folders.isNotEmpty)
+                  _section('Folders (${_folders.length})', _folders),
+                if (_folders.isNotEmpty && _files.isNotEmpty)
+                  const SizedBox(height: 14),
+                if (_files.isNotEmpty)
+                  _section('Files (${_files.length})', _files),
+              ],
             ),
           },
         ),
@@ -312,19 +499,256 @@ class _SftpViewState extends State<SftpView> {
     );
   }
 
-  void _runAction(_EntryAction action, SftpName entry) {
-    switch (action) {
-      case _EntryAction.download:
-        _download(entry);
-      case _EntryAction.rename:
-        _rename(entry);
-      case _EntryAction.delete:
-        _delete(entry);
+  Widget _section(String title, List<SftpName> entries) =>
+      GroupedCardList<SftpName>(
+        title: title,
+        items: entries,
+        onTap: (entry) =>
+            () => _openEntry(entry),
+        itemBuilder: (context, entry) => _EntryRow(
+          entry: entry,
+          selected: _selected.contains(entry.filename),
+          selectionMode: _selectionMode,
+          onAction: (action) => _runAction(action, entry),
+          onLongPress: () => _enterSelection(entry),
+        ),
+      );
+}
+
+enum _EntryAction { edit, download, rename, delete, select }
+
+bool isProbablyText(SftpName entry) {
+  final size = entry.attr.size ?? 0;
+  if (size > kMaxEditableBytes) return false;
+  final name = entry.filename;
+  final dot = name.lastIndexOf('.');
+  if (dot <= 0) return true;
+  return const {
+    'txt',
+    'md',
+    'log',
+    'conf',
+    'cfg',
+    'ini',
+    'yaml',
+    'yml',
+    'toml',
+    'json',
+    'xml',
+    'sh',
+    'bash',
+    'zsh',
+    'fish',
+    'py',
+    'pl',
+    'rb',
+    'lua',
+    'js',
+    'ts',
+    'c',
+    'h',
+    'cpp',
+    'hpp',
+    'go',
+    'rs',
+    'java',
+    'kt',
+    'php',
+    'sql',
+    'env',
+    'service',
+    'socket',
+    'timer',
+    'rules',
+    'list',
+    'repo',
+    'properties',
+    'gitignore',
+    'dockerignore',
+    'csv',
+    'tsv',
+  }.contains(name.substring(dot + 1).toLowerCase());
+}
+
+class _Breadcrumbs extends StatelessWidget {
+  const _Breadcrumbs({required this.path, required this.onNavigate});
+
+  final String path;
+  final ValueChanged<String> onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final segments = path.split('/').where((s) => s.isNotEmpty).toList();
+    final crumbs = <Widget>[];
+
+    Widget chip(Widget child, String target, {required bool isLast}) => InkWell(
+      onTap: isLast ? null : () => onNavigate(target),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: child,
+      ),
+    );
+
+    crumbs.add(
+      chip(
+        Icon(
+          Icons.home_filled,
+          size: 18,
+          color: segments.isEmpty ? colors.accent : colors.textSecondary,
+        ),
+        '/',
+        isLast: segments.isEmpty,
+      ),
+    );
+
+    var cumulative = '';
+    for (var i = 0; i < segments.length; i++) {
+      cumulative += '/${segments[i]}';
+      final isLast = i == segments.length - 1;
+      crumbs.add(Icon(Icons.chevron_right, size: 16, color: colors.textMuted));
+      crumbs.add(
+        chip(
+          Text(
+            segments[i],
+            style: TextStyle(
+              color: isLast ? colors.accent : colors.textSecondary,
+              fontWeight: isLast ? FontWeight.w700 : FontWeight.w500,
+              fontSize: 13.5,
+            ),
+          ),
+          cumulative,
+          isLast: isLast,
+        ),
+      );
     }
+
+    return Container(
+      height: 40,
+      width: double.infinity,
+      alignment: Alignment.centerLeft,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        reverse: true,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(mainAxisSize: MainAxisSize.min, children: crumbs),
+      ),
+    );
   }
 }
 
-enum _EntryAction { download, rename, delete }
+class _SelectionBar extends StatelessWidget {
+  const _SelectionBar({
+    required this.count,
+    required this.onCancel,
+    required this.onSelectAll,
+    required this.onDownload,
+    required this.onDelete,
+  });
+
+  final int count;
+  final VoidCallback onCancel;
+  final VoidCallback onSelectAll;
+  final VoidCallback onDownload;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Container(
+      height: 40,
+      color: colors.accent.withValues(alpha: 0.14),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Cancel',
+            onPressed: onCancel,
+            icon: Icon(Icons.close, size: 18, color: colors.textSecondary),
+          ),
+          Expanded(
+            child: Text(
+              '$count selected',
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Select all',
+            onPressed: onSelectAll,
+            icon: Icon(Icons.select_all, size: 19, color: colors.textSecondary),
+          ),
+          IconButton(
+            tooltip: 'Download',
+            onPressed: onDownload,
+            icon: Icon(Icons.download, size: 19, color: colors.accent),
+          ),
+          IconButton(
+            tooltip: 'Delete',
+            onPressed: onDelete,
+            icon: Icon(Icons.delete_outline, size: 19, color: colors.danger),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Toolbar extends StatelessWidget {
+  const _Toolbar({
+    required this.onRefresh,
+    required this.onUpload,
+    required this.onNewFolder,
+    required this.counts,
+  });
+
+  final VoidCallback onRefresh;
+  final VoidCallback? onUpload;
+  final VoidCallback? onNewFolder;
+  final String counts;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Container(
+      color: colors.card,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              counts,
+              style: TextStyle(color: colors.textMuted, fontSize: 11.5),
+            ),
+          ),
+          IconButton(
+            tooltip: 'New folder',
+            onPressed: onNewFolder,
+            icon: Icon(
+              Icons.create_new_folder_outlined,
+              color: colors.textSecondary,
+              size: 18,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Upload',
+            onPressed: onUpload,
+            icon: Icon(Icons.upload, color: colors.accent, size: 18),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: onRefresh,
+            icon: Icon(Icons.refresh, color: colors.textSecondary, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _Transfer {
   const _Transfer(this.name, this.total, this.done, this.isDownload);
@@ -392,80 +816,20 @@ class _TransferBar extends StatelessWidget {
   }
 }
 
-class _Toolbar extends StatelessWidget {
-  const _Toolbar({
-    required this.path,
-    required this.onUp,
-    required this.onRefresh,
-    required this.onUpload,
-    required this.onNewFolder,
+class _EntryRow extends StatelessWidget {
+  const _EntryRow({
+    required this.entry,
+    required this.selected,
+    required this.selectionMode,
+    required this.onAction,
+    required this.onLongPress,
   });
 
-  final String path;
-  final VoidCallback? onUp;
-  final VoidCallback onRefresh;
-  final VoidCallback? onUpload;
-  final VoidCallback? onNewFolder;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Container(
-      color: colors.card,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Up',
-            onPressed: onUp,
-            icon: Icon(
-              Icons.arrow_upward,
-              color: onUp == null ? colors.textMuted : colors.textSecondary,
-              size: 18,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              path,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colors.textSecondary,
-                fontSize: 12.5,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'New folder',
-            onPressed: onNewFolder,
-            icon: Icon(
-              Icons.create_new_folder_outlined,
-              color: colors.textSecondary,
-              size: 18,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Upload',
-            onPressed: onUpload,
-            icon: Icon(Icons.upload, color: colors.accent, size: 18),
-          ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: onRefresh,
-            icon: Icon(Icons.refresh, color: colors.textSecondary, size: 18),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EntryRow extends StatelessWidget {
-  const _EntryRow({required this.entry, required this.onAction});
-
   final SftpName entry;
+  final bool selected;
+  final bool selectionMode;
   final ValueChanged<_EntryAction> onAction;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -483,79 +847,114 @@ class _EntryRow extends StatelessWidget {
     final parts = <String>[
       if (!isDir && attr.size != null) formatBytes(attr.size!),
       if (attr.modifyTime != null) _formatTime(attr.modifyTime!),
+      if (attr.mode != null) _formatMode(attr.mode!),
     ];
 
-    return Row(
-      children: [
-        QIconBadge(
-          icon: icon,
-          color: isDir ? colors.info : colors.textMuted,
-          size: 32,
-          iconSize: 20,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                entry.filename,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 14,
-                  height: 1.2,
-                ),
+    return GestureDetector(
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        children: [
+          if (selectionMode)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Icon(
+                selected ? Icons.check_circle : Icons.circle_outlined,
+                size: 22,
+                color: selected ? colors.accent : colors.textMuted,
               ),
-              if (parts.isNotEmpty) ...[
-                const SizedBox(height: 2),
+            ),
+          QIconBadge(
+            icon: icon,
+            color: isDir ? colors.info : colors.textMuted,
+            size: 32,
+            iconSize: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
                 Text(
-                  parts.join(' · '),
+                  entry.filename,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 11.5,
+                    color: colors.textPrimary,
+                    fontSize: 14,
                     height: 1.2,
+                    fontWeight: isDir ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
+                if (parts.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    parts.join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 11.5,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        PopupMenuButton<_EntryAction>(
-          tooltip: 'Actions',
-          onSelected: onAction,
-          color: colors.dialogBackground,
-          position: PopupMenuPosition.under,
-          icon: Icon(Icons.more_vert, color: colors.textMuted, size: 18),
-          itemBuilder: (context) => [
-            if (!isDir)
-              _menuItem(
-                colors,
-                _EntryAction.download,
-                Icons.download,
-                'Download',
-                colors.accent,
-              ),
-            _menuItem(
-              colors,
-              _EntryAction.rename,
-              Icons.drive_file_rename_outline,
-              'Rename',
-              colors.info,
+          if (isDir && !selectionMode)
+            Icon(Icons.chevron_right, color: colors.textMuted, size: 18),
+          if (!selectionMode)
+            PopupMenuButton<_EntryAction>(
+              tooltip: 'Actions',
+              onSelected: onAction,
+              color: colors.dialogBackground,
+              position: PopupMenuPosition.under,
+              icon: Icon(Icons.more_vert, color: colors.textMuted, size: 18),
+              itemBuilder: (context) => [
+                if (!isDir && isProbablyText(entry))
+                  _menuItem(
+                    colors,
+                    _EntryAction.edit,
+                    Icons.edit_note,
+                    'Edit',
+                    colors.accent,
+                  ),
+                if (!isDir)
+                  _menuItem(
+                    colors,
+                    _EntryAction.download,
+                    Icons.download,
+                    'Download',
+                    colors.accent,
+                  ),
+                _menuItem(
+                  colors,
+                  _EntryAction.select,
+                  Icons.checklist,
+                  'Select',
+                  colors.textSecondary,
+                ),
+                _menuItem(
+                  colors,
+                  _EntryAction.rename,
+                  Icons.drive_file_rename_outline,
+                  'Rename',
+                  colors.info,
+                ),
+                _menuItem(
+                  colors,
+                  _EntryAction.delete,
+                  Icons.delete_outline,
+                  'Delete',
+                  colors.danger,
+                  textColor: colors.danger,
+                ),
+              ],
             ),
-            _menuItem(
-              colors,
-              _EntryAction.delete,
-              Icons.delete_outline,
-              'Delete',
-              colors.danger,
-              textColor: colors.danger,
-            ),
-          ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -616,6 +1015,16 @@ class _EntryRow extends StatelessWidget {
     String two(int value) => value.toString().padLeft(2, '0');
     return '${time.year}-${two(time.month)}-${two(time.day)} '
         '${two(time.hour)}:${two(time.minute)}';
+  }
+
+  static String _formatMode(SftpFileMode mode) {
+    String bit(bool on, String ch) => on ? ch : '-';
+    return '${bit(mode.userRead, 'r')}${bit(mode.userWrite, 'w')}'
+        '${bit(mode.userExecute, 'x')}'
+        '${bit(mode.groupRead, 'r')}${bit(mode.groupWrite, 'w')}'
+        '${bit(mode.groupExecute, 'x')}'
+        '${bit(mode.otherRead, 'r')}${bit(mode.otherWrite, 'w')}'
+        '${bit(mode.otherExecute, 'x')}';
   }
 }
 

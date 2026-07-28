@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'data/autologin.dart';
 import 'data/store.dart';
+import 'services/log.dart';
 import 'pages/hosts/page.dart';
 import 'pages/identities/page.dart';
 import 'pages/lock/page.dart';
@@ -14,9 +16,27 @@ import 'widgets/root_scaffold.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await QAppThemeController.instance.loadThemeMode();
+
+  await AutoLogin.instance.isAvailable();
+
   final vaultExists = await VaultStore.vaultExists();
+  Log.info('startup', 'vault ${vaultExists ? 'found' : 'not created yet'}');
+  if (vaultExists) await _tryAutoUnlock();
+
   SessionForegroundService.instance.start();
   runApp(OhMySshApp(vaultExists: vaultExists));
+}
+
+Future<void> _tryAutoUnlock() async {
+  final password = await AutoLogin.instance.readPassword();
+  if (password == null) return;
+  try {
+    await VaultStore.instance.unlock(password);
+    Log.info('startup', 'vault unlocked automatically');
+  } catch (error, stackTrace) {
+    Log.error('startup', 'auto-unlock failed, clearing it: $error', stackTrace);
+    await AutoLogin.instance.disable();
+  }
 }
 
 class OhMySshApp extends StatelessWidget {

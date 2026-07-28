@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../components/appbar.dart';
+import '../../components/cardlist.dart';
 import '../../ssh/manager.dart';
 import '../../ssh/session.dart';
 import '../../theme/theme.dart';
@@ -125,17 +126,18 @@ class _SessionPageState extends State<SessionPage> {
             title: session.title,
             subtitle: _subtitleFor(session),
             statusColor: _statusColor(colors, session),
+            // Native tooltips here: the custom wide tooltip anchors to a fixed
+            // offset from the top of the screen and lands in the wrong place on
+            // this page.
             actions: [
-              // A dropped session keeps its scrollback, so it stays on the
-              // terminal view rather than reverting to the connect screen.
               if (session.state == SessionState.closed)
-                QPageAppBarAction(
+                QPageAppBarAction.native(
                   tooltip: 'Reconnect',
                   icon: Icon(Icons.autorenew, color: colors.onAccent, size: 20),
                   onPressed: session.connect,
                 ),
-              if (session.isConnected && active.mode == TabMode.terminal)
-                QPageAppBarAction(
+              if (session.isConnected && !session.sftpTabOpen)
+                QPageAppBarAction.native(
                   tooltip: 'Open SFTP',
                   icon: Icon(
                     Icons.folder_open,
@@ -144,26 +146,39 @@ class _SessionPageState extends State<SessionPage> {
                   ),
                   onPressed: () => _openSftp(session),
                 ),
-              QPageAppBarAction(
+              QPageAppBarAction.native(
+                tooltip: 'New session',
+                icon: Icon(Icons.add, color: colors.onAccent, size: 22),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              QPageAppBarAction.native(
                 tooltip: 'System info',
                 icon: Icon(Icons.speed, color: colors.onAccent, size: 20),
                 onPressed: () => showSessionInfoDialog(context, session),
               ),
             ],
-            bottom: _TabStrip(
-              tabs: tabs,
-              activeKey: active.key,
-              onSelect: _select,
-              onClose: _closeTab,
-            ),
           ),
-          // Keyed so switching tabs does not tear down the terminal or reset
-          // the SFTP listing.
-          body: IndexedStack(
-            index: tabs.indexWhere((t) => t.key == active.key),
+          body: Column(
             children: [
-              for (final tab in tabs)
-                KeyedSubtree(key: ValueKey(tab.key), child: _body(tab)),
+              const SizedBox(height: 8),
+              _TabStrip(
+                tabs: tabs,
+                activeKey: active.key,
+                onSelect: _select,
+                onClose: _closeTab,
+              ),
+              const SizedBox(height: 8),
+              // Keyed so switching tabs does not tear down the terminal or
+              // reset the SFTP listing.
+              Expanded(
+                child: IndexedStack(
+                  index: tabs.indexWhere((t) => t.key == active.key),
+                  children: [
+                    for (final tab in tabs)
+                      KeyedSubtree(key: ValueKey(tab.key), child: _body(tab)),
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -207,7 +222,7 @@ class _SessionPageState extends State<SessionPage> {
       };
 }
 
-class _TabStrip extends StatelessWidget implements PreferredSizeWidget {
+class _TabStrip extends StatelessWidget {
   const _TabStrip({
     required this.tabs,
     required this.activeKey,
@@ -221,117 +236,119 @@ class _TabStrip extends StatelessWidget implements PreferredSizeWidget {
   final ValueChanged<_Tab> onClose;
 
   @override
-  Size get preferredSize => const Size.fromHeight(42);
-
-  @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Container(
-      height: 42,
-      color: colors.card,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: Row(
-          children: [
-            for (final tab in tabs)
-              _TabChip(
-                tab: tab,
-                selected: tab.key == activeKey,
-                onTap: () => onSelect(tab),
-                onClose: () => onClose(tab),
-              ),
-            IconButton(
-              tooltip: 'New session',
-              onPressed: () => Navigator.of(context).pop(),
-              icon: Icon(Icons.add, color: colors.textMuted, size: 18),
-            ),
-          ],
-        ),
+    return GroupedCardGrid<_Tab>(
+      items: tabs,
+      crossAxisCount: tabs.length,
+      mainAxisExtent: 42,
+      cardPadding: const EdgeInsets.fromLTRB(9, 0, 1, 0),
+      onTap: (tab) =>
+          () => onSelect(tab),
+      backgroundBuilder: (tab) =>
+          tab.key == activeKey ? const _SelectedTabFill() : null,
+      itemBuilder: (context, tab) => _TabContent(
+        tab: tab,
+        selected: tab.key == activeKey,
+        onClose: () => onClose(tab),
       ),
     );
   }
 }
 
-class _TabChip extends StatelessWidget {
-  const _TabChip({
+class _SelectedTabFill extends StatelessWidget {
+  const _SelectedTabFill();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Positioned.fill(
+      child: ColoredBox(color: colors.accent.withValues(alpha: 0.16)),
+    );
+  }
+}
+
+class _TabContent extends StatelessWidget {
+  const _TabContent({
     required this.tab,
     required this.selected,
-    required this.onTap,
     required this.onClose,
   });
 
   final _Tab tab;
   final bool selected;
-  final VoidCallback onTap;
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final session = tab.session;
-    final foreground = selected ? colors.textPrimary : colors.textMuted;
+    final foreground = selected ? colors.textPrimary : colors.textSecondary;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 5),
-      child: Material(
-        color: selected ? colors.background : Colors.transparent,
-        borderRadius: BorderRadius.circular(9),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 4, 0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  tab.mode == TabMode.sftp ? Icons.folder_open : Icons.terminal,
+    return Row(
+      children: [
+        Icon(
+          tab.mode == TabMode.sftp ? Icons.folder_open : Icons.terminal,
+          color: selected ? colors.accent : colors.textMuted,
+          size: 16,
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                session.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
                   color: foreground,
-                  size: 15,
+                  fontSize: 12.5,
+                  height: 1.2,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
-                const SizedBox(width: 7),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 130),
-                  child: Text(
-                    session.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: 12.5,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: session.isConnected
+                          ? colors.success
+                          : session.state == SessionState.connecting
+                          ? colors.warning
+                          : colors.textMuted,
                     ),
                   ),
-                ),
-                const SizedBox(width: 5),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: session.isConnected
-                        ? colors.success
-                        : session.state == SessionState.connecting
-                        ? colors.warning
-                        : colors.textMuted,
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      tab.mode == TabMode.sftp ? 'SFTP' : 'Shell',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.textMuted,
+                        fontSize: 10,
+                        height: 1.1,
+                      ),
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Close',
-                  onPressed: onClose,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 28,
-                    height: 28,
-                  ),
-                  icon: Icon(Icons.close, color: colors.textMuted, size: 13),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         ),
-      ),
+        IconButton(
+          tooltip: 'Close',
+          onPressed: onClose,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+          icon: Icon(Icons.close, color: colors.textMuted, size: 14),
+        ),
+      ],
     );
   }
 }

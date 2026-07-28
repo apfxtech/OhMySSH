@@ -14,6 +14,7 @@ class QTextField extends StatelessWidget {
     this.keyboardType,
     this.inputFormatters,
     this.autofocus = false,
+    this.onSubmitted,
   });
 
   final TextEditingController controller;
@@ -24,6 +25,7 @@ class QTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final List<TextInputFormatter>? inputFormatters;
   final bool autofocus;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +43,7 @@ class QTextField extends StatelessWidget {
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       autofocus: autofocus,
+      onSubmitted: onSubmitted,
       style: TextStyle(color: colors.textPrimary, fontSize: 15),
       decoration: InputDecoration(
         labelText: label,
@@ -266,36 +269,75 @@ Future<String?> promptForText(
   String initial = '',
   bool obscure = false,
   String actionLabel = 'Save',
-}) async {
-  final colors = context.appColors;
-  final controller = TextEditingController(text: initial);
-  try {
-    return await showDialog<String>(
-      context: context,
-      barrierColor: colors.dialogBarrier,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text(title, style: TextStyle(color: colors.dialogText)),
-        content: QTextField(
-          controller: controller,
-          label: label,
-          obscure: obscure,
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: Text(actionLabel),
-          ),
-        ],
+}) {
+  return showDialog<String>(
+    context: context,
+    barrierColor: context.appColors.dialogBarrier,
+    builder: (_) => _TextPrompt(
+      title: title,
+      label: label,
+      initial: initial,
+      obscure: obscure,
+      actionLabel: actionLabel,
+    ),
+  );
+}
+
+/// The controller lives on the [State]: `showDialog`'s future completes on
+/// pop(), but the dialog keeps rebuilding through its dismissal animation, so
+/// disposing it in the caller uses it after disposal.
+class _TextPrompt extends StatefulWidget {
+  const _TextPrompt({
+    required this.title,
+    required this.label,
+    required this.initial,
+    required this.obscure,
+    required this.actionLabel,
+  });
+
+  final String title;
+  final String label;
+  final String initial;
+  final bool obscure;
+  final String actionLabel;
+
+  @override
+  State<_TextPrompt> createState() => _TextPromptState();
+}
+
+class _TextPromptState extends State<_TextPrompt> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.of(context).pop(_controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return AlertDialog(
+      backgroundColor: colors.dialogBackground,
+      title: Text(widget.title, style: TextStyle(color: colors.dialogText)),
+      content: QTextField(
+        controller: _controller,
+        label: widget.label,
+        obscure: widget.obscure,
+        autofocus: true,
+        onSubmitted: (_) => _submit(),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(onPressed: _submit, child: Text(widget.actionLabel)),
+      ],
     );
-  } finally {
-    controller.dispose();
   }
 }

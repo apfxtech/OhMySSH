@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
 
+import 'autologin.dart';
 import 'models.dart';
 import 'vault.dart';
 
@@ -64,8 +65,24 @@ class VaultStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Confirms a password opens the current vault, so a typo cannot be stored as
+  /// the remembered password.
+  Future<bool> verifyPassword(String password) async {
+    try {
+      await Vault.open(password: password, file: _requireVault().file);
+      return true;
+    } on WrongPasswordException {
+      return false;
+    }
+  }
+
   Future<void> changeMasterPassword(String newPassword) async {
     await _requireVault().changePassword(newPassword);
+    // Keep auto-unlock working rather than locking the user out on the next
+    // launch.
+    if (await AutoLogin.instance.isEnabled()) {
+      await AutoLogin.instance.enable(newPassword);
+    }
   }
 
   Identity? identityFor(Host host) {

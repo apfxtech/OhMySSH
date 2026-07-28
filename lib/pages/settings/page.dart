@@ -6,16 +6,91 @@ import 'package:flutter/material.dart';
 import '../../components/appbar.dart';
 import '../../components/cardlist.dart';
 import '../../components/icon.dart';
+import '../../data/autologin.dart';
 import '../../data/store.dart';
 import '../../data/vault.dart';
+import '../../services/log.dart';
 import '../../ssh/manager.dart';
 import '../../theme/theme.dart';
 import '../../widgets/fields.dart';
+import '../../widgets/password_prompt.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.onLocked});
 
   final VoidCallback onLocked;
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool _autoLogin = false;
+  bool _autoLoginAvailable = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAutoLogin();
+  }
+
+  Future<void> _loadAutoLogin() async {
+    final available = await AutoLogin.instance.isAvailable();
+    final enabled = available && await AutoLogin.instance.isEnabled();
+    if (!mounted) return;
+    setState(() {
+      _autoLoginAvailable = available;
+      _autoLogin = enabled;
+    });
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _toggleAutoLogin(bool value) async {
+    if (!value) {
+      setState(() => _autoLogin = false);
+      await AutoLogin.instance.disable();
+      return;
+    }
+
+    if (!_autoLoginAvailable) {
+      final reason =
+          AutoLogin.instance.unavailableReason ?? 'no usable keystore';
+      Log.warn('settings', 'auto-unlock unavailable: $reason');
+      _toast(reason);
+      return;
+    }
+
+    final password = await promptForPassword(
+      context,
+      message:
+          'Confirm your master password to store it in this device\'s '
+          'keystore. The app will then open without asking.',
+      actionLabel: 'Enable',
+      verify: (candidate) async {
+        if (!await VaultStore.instance.verifyPassword(candidate)) {
+          return 'Wrong master password';
+        }
+        try {
+          await AutoLogin.instance.enable(candidate);
+          return null;
+        } on AutoLoginException catch (error) {
+          return error.message;
+        } catch (error, stackTrace) {
+          Log.error('settings', 'enabling auto-unlock failed', stackTrace);
+          Log.error('settings', error);
+          return '$error';
+        }
+      },
+    );
+    if (password == null || !mounted) return;
+    setState(() => _autoLogin = true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,20 +134,39 @@ class SettingsPage extends StatelessWidget {
                 ],
               ),
             ),
+
+            const SizedBox(height: 14),
+            GroupedCardList<int>(
+              title: 'Startup',
+              items: const [0],
+              wrapItems: true,
+              itemBuilder: (context, _) => _AutoLoginRow(
+                value: _autoLogin,
+                enabled: _autoLoginAvailable,
+                unavailableReason: _autoLoginAvailable
+                    ? null
+                    : AutoLogin.instance.unavailableReason,
+                onChanged: _toggleAutoLogin,
+              ),
+            ),
+
             const SizedBox(height: 14),
             GroupedCardList<_Action>(
               title: 'Vault',
-              items: _vaultActions(context, onLocked),
+              items: _vaultActions(),
               onTap: (action) => action.onTap,
               itemBuilder: (context, action) => _ActionRow(action: action),
             ),
+
             const SizedBox(height: 14),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 26),
               child: Text(
                 'The vault file holds every system, user, password and private '
                 'key, encrypted with your master password. Exporting copies '
-                'that file as-is — the other device only needs the password.',
+                'that file as-is — the other device only needs the password. '
+                'Auto-unlock keeps a copy of the password in the device '
+                'keystore; it is never written to the vault or to an export.',
                 style: TextStyle(
                   color: colors.textMuted,
                   fontSize: 11.5,
@@ -86,136 +180,114 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  List<_Action> _vaultActions(BuildContext context, VoidCallback onLocked) => [
+  List<_Action> _vaultActions() => [
     _Action(
       icon: Icons.file_upload_outlined,
       color: const Color(0xFF589DFF),
       title: 'Export vault',
       subtitle: 'Save an encrypted copy',
-      onTap: () => _export(context),
+      onTap: _export,
     ),
     _Action(
       icon: Icons.file_download_outlined,
       color: const Color(0xFF2ED34A),
       title: 'Import vault',
       subtitle: 'Merge systems and users from a file',
-      onTap: () => _import(context),
+      onTap: _import,
     ),
     _Action(
       icon: Icons.password,
       color: const Color(0xFFFF9B34),
       title: 'Change master password',
       subtitle: 'Re-encrypts the vault in place',
-      onTap: () => _changePassword(context),
+      onTap: _changePassword,
     ),
     _Action(
       icon: Icons.lock_outline,
       color: const Color(0xFFE85858),
       title: 'Lock now',
       subtitle: 'Closes every session and clears the vault from memory',
-      onTap: () => _lock(context, onLocked),
+      onTap: _lock,
     ),
   ];
 
-  Future<void> _export(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
+  Future<void> _export() async {
     try {
       final path = await VaultStore.instance.exportVault();
       if (path == null) return;
-      messenger.showSnackBar(SnackBar(content: Text('Exported to $path')));
-    } catch (error) {
-      messenger.showSnackBar(SnackBar(content: Text('Export failed: $error')));
+      _toast('Exported to $path');
+    } catch (error, stackTrace) {
+      Log.error('settings', 'export failed', stackTrace);
+      Log.error('settings', error);
+      _toast('Export failed: $error');
     }
   }
 
-  Future<void> _import(BuildContext context) async {
+  Future<void> _import() async {
     final picked = await FilePicker.pickFiles(
       dialogTitle: 'Select a vault file',
       // No extension filter: a .vault copied through a chat app or cloud drive
       // often arrives renamed.
     );
     if (picked == null || picked.files.single.path == null) return;
-    if (!context.mounted) return;
+    if (!mounted) return;
 
-    final password = await promptForText(
+    final password = await promptForPassword(
       context,
-      title: 'Import vault',
-      label: 'Master password of that file',
-      obscure: true,
+      message:
+          'Enter the master password of the vault file you picked. '
+          'Matching entries are updated, new ones are added.',
       actionLabel: 'Import',
     );
-    if (password == null || password.isEmpty || !context.mounted) return;
+    if (password == null || !mounted) return;
 
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final summary = await VaultStore.instance.importVault(
         file: File(picked.files.single.path!),
         password: password,
       );
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            summary.total == 0
-                ? 'Nothing new to import'
-                : 'Imported ${summary.hostsAdded} systems, '
-                      '${summary.identitiesAdded} users '
-                      '(${summary.hostsUpdated + summary.identitiesUpdated} updated)',
-          ),
-        ),
+      _toast(
+        summary.total == 0
+            ? 'Nothing new to import'
+            : 'Imported ${summary.hostsAdded} systems, '
+                  '${summary.identitiesAdded} users '
+                  '(${summary.hostsUpdated + summary.identitiesUpdated} updated)',
       );
     } on WrongPasswordException {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Wrong password for that file')),
-      );
-    } catch (error) {
-      messenger.showSnackBar(SnackBar(content: Text('Import failed: $error')));
+      Log.warn('settings', 'import: wrong password for the chosen file');
+      _toast('Wrong password for that file');
+    } catch (error, stackTrace) {
+      Log.error('settings', 'import failed', stackTrace);
+      Log.error('settings', error);
+      _toast('Import failed: $error');
     }
   }
 
-  Future<void> _changePassword(BuildContext context) async {
-    final next = await promptForText(
+  Future<void> _changePassword() async {
+    final next = await promptForPassword(
       context,
-      title: 'Change master password',
-      label: 'New password',
-      obscure: true,
+      message:
+          'Pick a new master password. The vault is re-encrypted in '
+          'place; existing exports keep their old password.',
       actionLabel: 'Change',
+      confirm: true,
+      minLength: 8,
+      verify: (candidate) async {
+        try {
+          await VaultStore.instance.changeMasterPassword(candidate);
+          return null;
+        } catch (error, stackTrace) {
+          Log.error('settings', 'changing master password failed', stackTrace);
+          Log.error('settings', error);
+          return '$error';
+        }
+      },
     );
-    if (next == null || !context.mounted) return;
-    if (next.length < 8) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Use at least 8 characters')),
-      );
-      return;
-    }
-
-    final confirm = await promptForText(
-      context,
-      title: 'Confirm',
-      label: 'Repeat new password',
-      obscure: true,
-      actionLabel: 'Confirm',
-    );
-    if (confirm == null || !context.mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    if (confirm != next) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Passwords do not match')),
-      );
-      return;
-    }
-
-    try {
-      await VaultStore.instance.changeMasterPassword(next);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Master password changed')),
-      );
-    } catch (error) {
-      messenger.showSnackBar(SnackBar(content: Text('Failed: $error')));
-    }
+    if (next == null || !mounted) return;
+    _toast('Master password changed');
   }
 
-  Future<void> _lock(BuildContext context, VoidCallback onLocked) async {
+  Future<void> _lock() async {
     final confirmed = await confirmDestructive(
       context,
       title: 'Lock the vault?',
@@ -225,7 +297,75 @@ class SettingsPage extends StatelessWidget {
     if (!confirmed) return;
     await SessionManager.instance.closeAll();
     VaultStore.instance.lock();
-    onLocked();
+    widget.onLocked();
+  }
+}
+
+class _AutoLoginRow extends StatelessWidget {
+  const _AutoLoginRow({
+    required this.value,
+    required this.enabled,
+    required this.unavailableReason,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final bool enabled;
+  final String? unavailableReason;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Row(
+      children: [
+        QIconBadge(
+          icon: value ? Icons.lock_open : Icons.lock_outline,
+          color: value ? colors.success : colors.textMuted,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Unlock automatically',
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  height: 1.2,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                unavailableReason ??
+                    (value
+                        ? 'Opens straight to your systems'
+                        : 'Ask for the master password on every launch'),
+                maxLines: 3,
+                style: TextStyle(
+                  color: unavailableReason == null
+                      ? colors.textMuted
+                      : colors.warning,
+                  fontSize: 12,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: value,
+          // Turning it off stays available even when the keystore is missing,
+          // so a stale "on" can always be cleared.
+          onChanged: (enabled || value) ? onChanged : null,
+          activeThumbColor: colors.onAccent,
+          activeTrackColor: colors.accent,
+        ),
+      ],
+    );
   }
 }
 
@@ -283,7 +423,7 @@ class _ActionRow extends StatelessWidget {
             ],
           ),
         ),
-        Icon(Icons.chevron_right, color: colors.textMuted, size: 16),
+        Icon(Icons.chevron_right, color: colors.textMuted, size: 20),
       ],
     );
   }

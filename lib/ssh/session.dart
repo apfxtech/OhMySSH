@@ -8,6 +8,7 @@ import 'package:xterm/xterm.dart';
 
 import '../data/models.dart';
 import 'probe.dart';
+import '../services/log.dart';
 
 enum ConnectStage {
   credentials('Loading credentials'),
@@ -125,7 +126,12 @@ class HostSession extends ChangeNotifier {
 
       _state = SessionState.connected;
       notifyListeners();
-    } catch (error) {
+    } catch (error, stackTrace) {
+      Log.error(
+        'ssh:${host.endpoint}',
+        'connect failed: ${_describe(error)}',
+        stackTrace,
+      );
       _error = error;
       _state = SessionState.failed;
       for (final stage in ConnectStage.values) {
@@ -304,6 +310,7 @@ class HostSession extends ChangeNotifier {
       await onProfiled?.call(profile);
       _mark(ConnectStage.probe, StageStatus.done, profile.osPretty);
     } catch (error) {
+      Log.warn('ssh:${host.endpoint}', 'probe skipped: ${_describe(error)}');
       _mark(ConnectStage.probe, StageStatus.skipped, _describe(error));
     }
   }

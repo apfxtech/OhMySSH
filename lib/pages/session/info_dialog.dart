@@ -6,6 +6,7 @@ import '../../ssh/probe.dart';
 import '../../ssh/session.dart';
 import '../../theme/theme.dart';
 import 'sftp_view.dart' show formatBytes;
+import '../../services/log.dart';
 
 Future<void> showSessionInfoDialog(BuildContext context, HostSession session) {
   final colors = context.appColors;
@@ -32,7 +33,9 @@ class _InfoDialogState extends State<_InfoDialog> {
     setState(() => _refreshing = true);
     try {
       await widget.session.refreshProfile();
-    } catch (error) {
+    } catch (error, stackTrace) {
+      Log.error('probe', 'refresh failed', stackTrace);
+      Log.error('probe', error);
       if (mounted) {
         ScaffoldMessenger.of(
           context,

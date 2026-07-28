@@ -10,5 +10,18 @@
 	<!-- Import/export of the vault and SFTP transfers via the file picker. -->
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<!-- Auto-unlock (flutter_secure_storage) needs the macOS keychain, and the
+	     keychain refuses a build that is signed ad-hoc (CODE_SIGN_IDENTITY = "-",
+	     the Flutter default) with -34018 "A required entitlement isn't present".
+	     Turning the sandbox off does NOT help — the problem is the missing
+	     application-identifier, not the sandbox.
+
+	     To enable it on macOS, once, in Xcode:
+	       1. open macos/Runner.xcworkspace
+	       2. Runner target -> Signing & Capabilities -> pick your Team
+	          (this also registers the bundle id and generates a profile)
+	       3. add the "Keychain Sharing" capability
+	     Until then the toggle stays off and says why. Every other platform
+	     works without any of this. -->
 </dict>
 </plist>
