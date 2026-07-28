@@ -27,13 +27,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  static const _tapsForGallery = 7;
-  static const _tapWindow = Duration(seconds: 2);
-
   bool _autoLogin = false;
   bool _autoLoginAvailable = true;
-  int _versionTaps = 0;
-  DateTime? _lastVersionTap;
 
   @override
   void initState() {
@@ -51,18 +46,7 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  /// Seven taps on the version label opens the OS icon gallery. The counter
-  /// resets whenever a tap arrives late, so an idle tap never accumulates.
-  void _countVersionTap() {
-    final now = DateTime.now();
-    final last = _lastVersionTap;
-    _versionTaps = (last == null || now.difference(last) > _tapWindow)
-        ? 1
-        : _versionTaps + 1;
-    _lastVersionTap = now;
-    if (_versionTaps < _tapsForGallery) return;
-    _versionTaps = 0;
-    _lastVersionTap = null;
+  void _openIconGallery() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const IconGalleryPage()),
     );
@@ -202,7 +186,9 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 18),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: _countVersionTap,
+              // Long-press, not a tap count: the gallery is a developer aid,
+              // so it should open first try without being reachable by accident.
+              onLongPress: _openIconGallery,
               child: const AppVersionLabel(),
             ),
             const SizedBox(height: 10),
