@@ -12,6 +12,7 @@ import '../../data/vault.dart';
 import '../../services/log.dart';
 import '../../ssh/manager.dart';
 import '../../theme/theme.dart';
+import '../../widgets/app_version.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/password_prompt.dart';
 
@@ -174,6 +175,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ),
+
+            const SizedBox(height: 18),
+            const AppVersionLabel(),
+            const SizedBox(height: 10),
           ],
         ),
       ),

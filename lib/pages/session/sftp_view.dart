@@ -448,53 +448,61 @@ class _SftpViewState extends State<SftpView> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
-    return Column(
+    return Stack(
       children: [
-        if (_selectionMode)
-          _SelectionBar(
-            count: _selected.length,
-            onCancel: _exitSelection,
-            onSelectAll: _selectAll,
-            onDownload: _downloadSelected,
-            onDelete: _deleteSelected,
-          )
-        else
-          _Breadcrumbs(path: _path, onNavigate: _listDir),
-        _Toolbar(
-          onRefresh: () => _listDir(_path),
-          onUpload: _sftp == null ? null : _upload,
-          onNewFolder: _sftp == null ? null : _makeDirectory,
-          counts: '${_folders.length} folders · ${_files.length} files',
+        Column(
+          children: [
+            if (_selectionMode)
+              _SelectionBar(
+                count: _selected.length,
+                onCancel: _exitSelection,
+                onSelectAll: _selectAll,
+                onDownload: _downloadSelected,
+                onDelete: _deleteSelected,
+              )
+            else
+              _Breadcrumbs(path: _path, onNavigate: _listDir),
+            if (_transfer != null) _TransferBar(transfer: _transfer!),
+            Expanded(
+              child: switch ((_loading, _error)) {
+                (true, _) => Center(
+                  child: CircularProgressIndicator(color: colors.accent),
+                ),
+                (_, final String error) => QEmptyView(
+                  icon: Icons.error_outline,
+                  title: 'Could not read this directory',
+                  message: error,
+                ),
+                _ when _folders.isEmpty && _files.isEmpty => const QEmptyView(
+                  icon: Icons.folder_open,
+                  title: 'Empty directory',
+                  message: 'Nothing here yet.',
+                ),
+                _ => ListView(
+                  padding: const EdgeInsets.only(top: 10, bottom: 170),
+                  children: [
+                    if (_folders.isNotEmpty)
+                      _section('Folders (${_folders.length})', _folders),
+                    if (_folders.isNotEmpty && _files.isNotEmpty)
+                      const SizedBox(height: 14),
+                    if (_files.isNotEmpty)
+                      _section('Files (${_files.length})', _files),
+                  ],
+                ),
+              },
+            ),
+          ],
         ),
-        if (_transfer != null) _TransferBar(transfer: _transfer!),
-        Expanded(
-          child: switch ((_loading, _error)) {
-            (true, _) => Center(
-              child: CircularProgressIndicator(color: colors.accent),
+        if (!_selectionMode)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: _FloatingActions(
+              onNewFolder: _sftp == null ? null : _makeDirectory,
+              onUpload: _sftp == null ? null : _upload,
+              onRefresh: () => _listDir(_path),
             ),
-            (_, final String error) => QEmptyView(
-              icon: Icons.error_outline,
-              title: 'Could not read this directory',
-              message: error,
-            ),
-            _ when _folders.isEmpty && _files.isEmpty => const QEmptyView(
-              icon: Icons.folder_open,
-              title: 'Empty directory',
-              message: 'Nothing here yet.',
-            ),
-            _ => ListView(
-              padding: const EdgeInsets.only(top: 10, bottom: 20),
-              children: [
-                if (_folders.isNotEmpty)
-                  _section('Folders (${_folders.length})', _folders),
-                if (_folders.isNotEmpty && _files.isNotEmpty)
-                  const SizedBox(height: 14),
-                if (_files.isNotEmpty)
-                  _section('Files (${_files.length})', _files),
-              ],
-            ),
-          },
-        ),
+          ),
       ],
     );
   }
@@ -698,54 +706,83 @@ class _SelectionBar extends StatelessWidget {
   }
 }
 
-class _Toolbar extends StatelessWidget {
-  const _Toolbar({
-    required this.onRefresh,
-    required this.onUpload,
+class _FloatingActions extends StatelessWidget {
+  const _FloatingActions({
     required this.onNewFolder,
-    required this.counts,
+    required this.onUpload,
+    required this.onRefresh,
   });
 
-  final VoidCallback onRefresh;
-  final VoidCallback? onUpload;
   final VoidCallback? onNewFolder;
-  final String counts;
+  final VoidCallback? onUpload;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    return Container(
-      color: colors.card,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              counts,
-              style: TextStyle(color: colors.textMuted, fontSize: 11.5),
-            ),
-          ),
-          IconButton(
-            tooltip: 'New folder',
-            onPressed: onNewFolder,
-            icon: Icon(
-              Icons.create_new_folder_outlined,
-              color: colors.textSecondary,
-              size: 18,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Upload',
-            onPressed: onUpload,
-            icon: Icon(Icons.upload, color: colors.accent, size: 18),
-          ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: onRefresh,
-            icon: Icon(Icons.refresh, color: colors.textSecondary, size: 18),
-          ),
-        ],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _FloatingAction(
+          tooltip: 'New folder',
+          icon: Icons.create_new_folder_outlined,
+          onPressed: onNewFolder,
+          background: colors.card,
+          foreground: colors.textSecondary,
+        ),
+        const SizedBox(height: 10),
+        _FloatingAction(
+          tooltip: 'Refresh',
+          icon: Icons.refresh,
+          onPressed: onRefresh,
+          background: colors.card,
+          foreground: colors.textSecondary,
+        ),
+        const SizedBox(height: 10),
+        _FloatingAction(
+          tooltip: 'Upload',
+          icon: Icons.upload,
+          onPressed: onUpload,
+          background: colors.accent,
+          foreground: colors.onAccent,
+        ),
+      ],
+    );
+  }
+}
+
+class _FloatingAction extends StatelessWidget {
+  const _FloatingAction({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onPressed == null;
+    return FloatingActionButton.small(
+      // Several of these share one route and would all fly to the same hero on
+      // a page transition.
+      heroTag: null,
+      tooltip: tooltip,
+      elevation: 3,
+      backgroundColor: disabled
+          ? background.withValues(alpha: 0.5)
+          : background,
+      foregroundColor: disabled
+          ? foreground.withValues(alpha: 0.4)
+          : foreground,
+      onPressed: onPressed,
+      child: Icon(icon, size: 20),
     );
   }
 }

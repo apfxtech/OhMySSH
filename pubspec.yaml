@@ -30,6 +30,9 @@ dependencies:
   # libsecret; unavailable platforms just refuse the toggle.
   flutter_secure_storage: ^10.3.1
 
+  # Reads the bundle version back out for the build label in settings.
+  package_info_plus: ^8.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
