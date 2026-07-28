@@ -156,13 +156,17 @@ class HostSession extends ChangeNotifier {
       }
       if (SSHKeyPair.isEncryptedPem(pem) &&
           (id.passphrase == null || id.passphrase!.isEmpty)) {
-        throw const SessionError('Private key is encrypted but has no passphrase');
+        throw const SessionError(
+          'Private key is encrypted but has no passphrase',
+        );
       }
       final List<SSHKeyPair> keys;
       try {
         keys = SSHKeyPair.fromPem(pem, id.passphrase);
       } catch (error) {
-        throw SessionError('Private key could not be read: ${_describe(error)}');
+        throw SessionError(
+          'Private key could not be read: ${_describe(error)}',
+        );
       }
       _mark(
         ConnectStage.credentials,
@@ -172,7 +176,11 @@ class HostSession extends ChangeNotifier {
       return _Credentials(username: id.username, keys: keys);
     }
 
-    _mark(ConnectStage.credentials, StageStatus.done, '${id.username} · password');
+    _mark(
+      ConnectStage.credentials,
+      StageStatus.done,
+      '${id.username} · password',
+    );
     return _Credentials(username: id.username, password: id.password ?? '');
   }
 
@@ -224,8 +232,7 @@ class HostSession extends ChangeNotifier {
           return true;
         }
 
-        final accept =
-            await onHostKeyMismatch?.call(pinned, offered) ?? false;
+        final accept = await onHostKeyMismatch?.call(pinned, offered) ?? false;
         if (accept) {
           await onHostKeyPinned?.call(offered);
           _mark(ConnectStage.hostKey, StageStatus.done, 're-pinned $offered');
@@ -290,9 +297,9 @@ class HostSession extends ChangeNotifier {
   Future<void> _runProbe() async {
     _mark(ConnectStage.probe, StageStatus.running);
     try {
-      final profile = await probeHost(_client!).timeout(
-        const Duration(seconds: 20),
-      );
+      final profile = await probeHost(
+        _client!,
+      ).timeout(const Duration(seconds: 20));
       _profile = profile;
       await onProfiled?.call(profile);
       _mark(ConnectStage.probe, StageStatus.done, profile.osPretty);
@@ -304,7 +311,9 @@ class HostSession extends ChangeNotifier {
   Future<void> refreshProfile() async {
     final client = _client;
     if (client == null || _state != SessionState.connected) return;
-    final profile = await probeHost(client).timeout(const Duration(seconds: 20));
+    final profile = await probeHost(
+      client,
+    ).timeout(const Duration(seconds: 20));
     _profile = profile;
     await onProfiled?.call(profile);
     notifyListeners();

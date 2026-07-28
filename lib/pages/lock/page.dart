@@ -6,7 +6,11 @@ import '../../data/vault.dart';
 import '../../theme/theme.dart';
 
 class LockPage extends StatefulWidget {
-  const LockPage({super.key, required this.vaultExists, required this.onUnlocked});
+  const LockPage({
+    super.key,
+    required this.vaultExists,
+    required this.onUnlocked,
+  });
 
   final bool vaultExists;
   final VoidCallback onUnlocked;
@@ -84,7 +88,7 @@ class _LockPageState extends State<LockPage> {
               children: [
                 Center(
                   child: QIconBadge(
-                    asset: 'assets/ic/state/lock.svg',
+                    icon: Icons.lock_outline,
                     color: colors.accent,
                     size: 64,
                     iconSize: 36,

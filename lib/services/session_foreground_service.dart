@@ -102,9 +102,8 @@ class SessionForegroundService with WidgetsBindingObserver {
     );
   }
 
-  String get _notificationText => _sessionCount == 1
-      ? '1 session open'
-      : '$_sessionCount sessions open';
+  String get _notificationText =>
+      _sessionCount == 1 ? '1 session open' : '$_sessionCount sessions open';
 
   Future<void> _startService() async {
     // Re-check under the serialized op: state may have moved while queued.
@@ -112,7 +111,8 @@ class SessionForegroundService with WidgetsBindingObserver {
     _ensureInitialized();
 
     // Android 13+ requires runtime notification permission for an FGS.
-    final permission = await FlutterForegroundTask.checkNotificationPermission();
+    final permission =
+        await FlutterForegroundTask.checkNotificationPermission();
     if (permission != NotificationPermission.granted) {
       await FlutterForegroundTask.requestNotificationPermission();
     }

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../components/icon.dart';
 import '../theme/theme.dart';
 
 class QTextField extends StatelessWidget {
@@ -94,7 +93,7 @@ class QEmptyView extends StatelessWidget {
     this.action,
   });
 
-  final String icon;
+  final IconData icon;
   final String title;
   final String message;
   final Widget? action;
@@ -108,7 +107,7 @@ class QEmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            QIcon(asset: icon, color: colors.textMuted, size: 44),
+            Icon(icon, color: colors.textMuted, size: 44),
             const SizedBox(height: 16),
             Text(
               title,
@@ -165,6 +164,99 @@ Future<bool> confirmDestructive(
     ),
   );
   return result ?? false;
+}
+
+class PickOption<T> {
+  const PickOption(
+    this.value,
+    this.label, {
+    this.subtitle,
+    this.icon,
+    this.isAction = false,
+  });
+
+  final T value;
+  final String label;
+  final String? subtitle;
+  final IconData? icon;
+
+  final bool isAction;
+}
+
+Future<PickOption<T>?> pickFromList<T>(
+  BuildContext context, {
+  required String title,
+  required List<PickOption<T>> options,
+  required T current,
+}) {
+  final colors = context.appColors;
+  return showDialog<PickOption<T>>(
+    context: context,
+    barrierColor: colors.dialogBarrier,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: colors.dialogBackground,
+      title: Text(title, style: TextStyle(color: colors.dialogText)),
+      contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
+      content: SizedBox(
+        width: 340,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.5,
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: options.length,
+            itemBuilder: (context, index) {
+              final option = options[index];
+              final selected = !option.isAction && option.value == current;
+              final tint = option.isAction ? colors.accent : colors.dialogText;
+              return ListTile(
+                dense: true,
+                leading: option.icon == null
+                    ? null
+                    : Icon(
+                        option.icon,
+                        size: 20,
+                        color: option.isAction
+                            ? colors.accent
+                            : colors.textMuted,
+                      ),
+                title: Text(
+                  option.label,
+                  style: TextStyle(
+                    color: tint,
+                    fontSize: 14,
+                    fontWeight: option.isAction
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                ),
+                subtitle: option.subtitle == null
+                    ? null
+                    : Text(
+                        option.subtitle!,
+                        style: TextStyle(
+                          color: colors.dialogMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                trailing: selected
+                    ? Icon(Icons.check, size: 18, color: colors.accent)
+                    : null,
+                onTap: () => Navigator.of(dialogContext).pop(option),
+              );
+            },
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+    ),
+  );
 }
 
 Future<String?> promptForText(

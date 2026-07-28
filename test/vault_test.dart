@@ -66,11 +66,7 @@ void main() {
   });
 
   test('rejects the wrong password', () async {
-    await Vault.create(
-      password: 'right',
-      file: vaultFile(),
-      initial: sample(),
-    );
+    await Vault.create(password: 'right', file: vaultFile(), initial: sample());
 
     expect(
       () => Vault.open(password: 'wrong', file: vaultFile()),
@@ -79,11 +75,7 @@ void main() {
   });
 
   test('secrets are not readable in the file on disk', () async {
-    await Vault.create(
-      password: 'right',
-      file: vaultFile(),
-      initial: sample(),
-    );
+    await Vault.create(password: 'right', file: vaultFile(), initial: sample());
 
     final raw = await vaultFile().readAsString();
     expect(raw, isNot(contains('hunter2')));

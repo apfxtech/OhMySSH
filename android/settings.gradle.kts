@@ -19,8 +19,13 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "9.0.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.3.20" apply false
+    // Held on AGP 8 / Gradle 8: on AGP 9 the built-in-Kotlin migration
+    // splits the plugin ecosystem. file_picker skips applying KGP and needs
+    // android.builtInKotlin=true, while file_saver, share_plus and
+    // flutter_foreground_task still apply KGP themselves and break under it.
+    // AGP 8.11.1 keeps every plugin on the same path.
+    id("com.android.application") version "8.11.1" apply false
+    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
 }
 
 include(":app")

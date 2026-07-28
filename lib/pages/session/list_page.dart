@@ -32,11 +32,7 @@ class SessionsListPage extends StatelessWidget {
               if (sessions.isNotEmpty)
                 QPageAppBarAction(
                   tooltip: 'Close all',
-                  icon: QIcon(
-                    asset: 'assets/ic/action/disconnect.svg',
-                    color: colors.onAccent,
-                    size: 20,
-                  ),
+                  icon: Icon(Icons.link_off, color: colors.onAccent, size: 20),
                   onPressed: () async {
                     final confirmed = await confirmDestructive(
                       context,
@@ -51,7 +47,7 @@ class SessionsListPage extends StatelessWidget {
           ),
           body: sessions.isEmpty
               ? const QEmptyView(
-                  icon: 'assets/ic/nav/terminal.svg',
+                  icon: Icons.terminal,
                   title: 'Nothing open',
                   message: 'Connect to a system to start a session.',
                 )
@@ -59,11 +55,12 @@ class SessionsListPage extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 14, bottom: 20),
                   child: GroupedCardList<HostSession>(
                     items: sessions,
-                    onTap: (session) => () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SessionPage(sessionId: session.id),
-                      ),
-                    ),
+                    onTap: (session) =>
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => SessionPage(sessionId: session.id),
+                          ),
+                        ),
                     itemBuilder: (context, session) =>
                         _SessionRow(session: session),
                   ),
@@ -94,7 +91,10 @@ class _SessionRow extends StatelessWidget {
 
     return Row(
       children: [
-        QIconBadge(asset: osIconAsset(osId), color: Color(osColorValue(osId))),
+        QIconBadge.svg(
+          asset: osIconAsset(osId),
+          color: Color(osColorValue(osId)),
+        ),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -145,11 +145,7 @@ class _SessionRow extends StatelessWidget {
         IconButton(
           tooltip: 'Close',
           onPressed: () => SessionManager.instance.close(session.id),
-          icon: QIcon(
-            asset: 'assets/ic/action/close.svg',
-            color: colors.textMuted,
-            size: 16,
-          ),
+          icon: Icon(Icons.close, color: colors.textMuted, size: 16),
         ),
       ],
     );

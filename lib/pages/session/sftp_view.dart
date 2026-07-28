@@ -164,7 +164,8 @@ class _SftpViewState extends State<SftpView> {
       try {
         final remote = await sftp.open(
           _join(_path, name),
-          mode: SftpFileOpenMode.create |
+          mode:
+              SftpFileOpenMode.create |
               SftpFileOpenMode.write |
               SftpFileOpenMode.truncate,
         );
@@ -190,7 +191,8 @@ class _SftpViewState extends State<SftpView> {
     final confirmed = await confirmDestructive(
       context,
       title: isDir ? 'Delete directory?' : 'Delete file?',
-      message: '${_join(_path, entry.filename)} will be removed on the remote '
+      message:
+          '${_join(_path, entry.filename)} will be removed on the remote '
           'system. This cannot be undone.',
     );
     if (!confirmed) return;
@@ -278,12 +280,12 @@ class _SftpViewState extends State<SftpView> {
               child: CircularProgressIndicator(color: colors.accent),
             ),
             (_, final String error) => QEmptyView(
-              icon: 'assets/ic/state/error.svg',
+              icon: Icons.error_outline,
               title: 'Could not read this directory',
               message: error,
             ),
             _ when _entries.isEmpty => const QEmptyView(
-              icon: 'assets/ic/file/folder.svg',
+              icon: Icons.folder,
               title: 'Empty directory',
               message: 'Nothing here yet.',
             ),
@@ -300,7 +302,7 @@ class _SftpViewState extends State<SftpView> {
                 },
                 itemBuilder: (context, entry) => _EntryRow(
                   entry: entry,
-                  onMenu: () => _showEntryMenu(entry),
+                  onAction: (action) => _runAction(action, entry),
                 ),
               ),
             ),
@@ -310,79 +312,19 @@ class _SftpViewState extends State<SftpView> {
     );
   }
 
-  Future<void> _showEntryMenu(SftpName entry) async {
-    final colors = context.appColors;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: colors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-              child: Text(
-                entry.filename,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            if (!entry.attr.isDirectory)
-              ListTile(
-                leading: QIcon(
-                  asset: 'assets/ic/action/download.svg',
-                  color: colors.accent,
-                  size: 20,
-                ),
-                title: Text(
-                  'Download',
-                  style: TextStyle(color: colors.textPrimary),
-                ),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _download(entry);
-                },
-              ),
-            ListTile(
-              leading: QIcon(
-                asset: 'assets/ic/action/rename.svg',
-                color: colors.info,
-                size: 20,
-              ),
-              title: Text(
-                'Rename',
-                style: TextStyle(color: colors.textPrimary),
-              ),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _rename(entry);
-              },
-            ),
-            ListTile(
-              leading: QIcon(
-                asset: 'assets/ic/action/delete.svg',
-                color: colors.danger,
-                size: 20,
-              ),
-              title: Text('Delete', style: TextStyle(color: colors.danger)),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _delete(entry);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+  void _runAction(_EntryAction action, SftpName entry) {
+    switch (action) {
+      case _EntryAction.download:
+        _download(entry);
+      case _EntryAction.rename:
+        _rename(entry);
+      case _EntryAction.delete:
+        _delete(entry);
+    }
   }
 }
+
+enum _EntryAction { download, rename, delete }
 
 class _Transfer {
   const _Transfer(this.name, this.total, this.done, this.isDownload);
@@ -476,8 +418,8 @@ class _Toolbar extends StatelessWidget {
           IconButton(
             tooltip: 'Up',
             onPressed: onUp,
-            icon: QIcon(
-              asset: 'assets/ic/file/folder-up.svg',
+            icon: Icon(
+              Icons.arrow_upward,
               color: onUp == null ? colors.textMuted : colors.textSecondary,
               size: 18,
             ),
@@ -497,8 +439,8 @@ class _Toolbar extends StatelessWidget {
           IconButton(
             tooltip: 'New folder',
             onPressed: onNewFolder,
-            icon: QIcon(
-              asset: 'assets/ic/action/create-folder.svg',
+            icon: Icon(
+              Icons.create_new_folder_outlined,
               color: colors.textSecondary,
               size: 18,
             ),
@@ -506,20 +448,12 @@ class _Toolbar extends StatelessWidget {
           IconButton(
             tooltip: 'Upload',
             onPressed: onUpload,
-            icon: QIcon(
-              asset: 'assets/ic/action/upload.svg',
-              color: colors.accent,
-              size: 18,
-            ),
+            icon: Icon(Icons.upload, color: colors.accent, size: 18),
           ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: onRefresh,
-            icon: QIcon(
-              asset: 'assets/ic/action/refresh.svg',
-              color: colors.textSecondary,
-              size: 18,
-            ),
+            icon: Icon(Icons.refresh, color: colors.textSecondary, size: 18),
           ),
         ],
       ),
@@ -528,10 +462,10 @@ class _Toolbar extends StatelessWidget {
 }
 
 class _EntryRow extends StatelessWidget {
-  const _EntryRow({required this.entry, required this.onMenu});
+  const _EntryRow({required this.entry, required this.onAction});
 
   final SftpName entry;
-  final VoidCallback onMenu;
+  final ValueChanged<_EntryAction> onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -540,11 +474,11 @@ class _EntryRow extends StatelessWidget {
     final isDir = attr.isDirectory;
     final isLink = attr.isSymbolicLink;
 
-    final asset = isDir
-        ? 'assets/ic/file/folder.svg'
+    final icon = isDir
+        ? Icons.folder
         : isLink
-        ? 'assets/ic/file/link.svg'
-        : _assetForName(entry.filename);
+        ? Icons.link
+        : _iconForName(entry.filename);
 
     final parts = <String>[
       if (!isDir && attr.size != null) formatBytes(attr.size!),
@@ -554,7 +488,7 @@ class _EntryRow extends StatelessWidget {
     return Row(
       children: [
         QIconBadge(
-          asset: asset,
+          icon: icon,
           color: isDir ? colors.info : colors.textMuted,
           size: 32,
           iconSize: 20,
@@ -589,31 +523,91 @@ class _EntryRow extends StatelessWidget {
             ],
           ),
         ),
-        IconButton(
+        PopupMenuButton<_EntryAction>(
           tooltip: 'Actions',
-          onPressed: onMenu,
-          icon: QIcon(
-            asset: 'assets/ic/action/more.svg',
-            color: colors.textMuted,
-            size: 18,
-          ),
+          onSelected: onAction,
+          color: colors.dialogBackground,
+          position: PopupMenuPosition.under,
+          icon: Icon(Icons.more_vert, color: colors.textMuted, size: 18),
+          itemBuilder: (context) => [
+            if (!isDir)
+              _menuItem(
+                colors,
+                _EntryAction.download,
+                Icons.download,
+                'Download',
+                colors.accent,
+              ),
+            _menuItem(
+              colors,
+              _EntryAction.rename,
+              Icons.drive_file_rename_outline,
+              'Rename',
+              colors.info,
+            ),
+            _menuItem(
+              colors,
+              _EntryAction.delete,
+              Icons.delete_outline,
+              'Delete',
+              colors.danger,
+              textColor: colors.danger,
+            ),
+          ],
         ),
       ],
     );
   }
 
-  static String _assetForName(String name) {
+  PopupMenuItem<_EntryAction> _menuItem(
+    QAppColors colors,
+    _EntryAction action,
+    IconData icon,
+    String label,
+    Color iconColor, {
+    Color? textColor,
+  }) => PopupMenuItem<_EntryAction>(
+    value: action,
+    height: 42,
+    child: Row(
+      children: [
+        Icon(icon, size: 18, color: iconColor),
+        const SizedBox(width: 12),
+        Text(
+          label,
+          style: TextStyle(color: textColor ?? colors.dialogText, fontSize: 14),
+        ),
+      ],
+    ),
+  );
+
+  static IconData _iconForName(String name) {
     final dot = name.lastIndexOf('.');
     final ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
     return switch (ext) {
-      'zip' || 'gz' || 'tar' || 'xz' || 'bz2' || '7z' => 'assets/ic/file/archive.svg',
-      'png' || 'jpg' || 'jpeg' || 'gif' || 'webp' || 'svg' => 'assets/ic/file/image.svg',
-      'sh' || 'bash' || 'zsh' || 'py' || 'pl' || 'rb' => 'assets/ic/file/script.svg',
-      'conf' || 'cfg' || 'ini' || 'yaml' || 'yml' || 'toml' || 'json' =>
-        'assets/ic/file/config.svg',
-      'log' || 'txt' || 'md' => 'assets/ic/file/text.svg',
-      'bin' || 'so' || 'o' || 'exe' || 'dll' => 'assets/ic/file/binary.svg',
-      _ => 'assets/ic/file/default.svg',
+      'zip' ||
+      'gz' ||
+      'tar' ||
+      'xz' ||
+      'bz2' ||
+      '7z' => Icons.folder_zip_outlined,
+      'png' ||
+      'jpg' ||
+      'jpeg' ||
+      'gif' ||
+      'webp' ||
+      'svg' => Icons.image_outlined,
+      'sh' || 'bash' || 'zsh' || 'py' || 'pl' || 'rb' => Icons.code,
+      'conf' ||
+      'cfg' ||
+      'ini' ||
+      'yaml' ||
+      'yml' ||
+      'toml' ||
+      'json' => Icons.tune,
+      'log' || 'txt' || 'md' => Icons.description_outlined,
+      'bin' || 'so' || 'o' || 'exe' || 'dll' => Icons.data_object,
+      _ => Icons.insert_drive_file_outlined,
     };
   }
 

@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/theme.dart';
@@ -10,7 +10,7 @@ class _RasterIconCache {
   _RasterIconCache._();
   static final _RasterIconCache instance = _RasterIconCache._();
 
-  static const int _maxEntries = 256;
+  static const int _maxEntries = 128;
 
   final Map<String, ui.Image> _ready = <String, ui.Image>{};
   final Map<String, Future<ui.Image>> _pending = <String, Future<ui.Image>>{};
@@ -62,7 +62,12 @@ class _RasterIconCache {
     _ready[key] = image;
   }
 
-  void _debugLog(String action, {String? label, int? pixelSize, Object? error}) {
+  void _debugLog(
+    String action, {
+    String? label,
+    int? pixelSize,
+    Object? error,
+  }) {
     if (!kDebugMode) return;
 
     final details = <String>[
@@ -231,15 +236,26 @@ class QIconBadgeStyle {
 class QIconBadge extends StatelessWidget {
   const QIconBadge({
     super.key,
-    required this.asset,
+    required IconData this.icon,
+    required this.color,
+    this.size = 36,
+    this.iconSize = 22,
+    this.backgroundOpacity = 0.18,
+    this.borderRadius = 8,
+  }) : asset = null;
+
+  const QIconBadge.svg({
+    super.key,
+    required String this.asset,
     required this.color,
     this.size = 36,
     this.iconSize = 24,
     this.backgroundOpacity = 0.18,
     this.borderRadius = 8,
-  });
+  }) : icon = null;
 
-  final String asset;
+  final IconData? icon;
+  final String? asset;
   final Color color;
   final double size;
   final double iconSize;
@@ -262,7 +278,9 @@ class QIconBadge extends StatelessWidget {
         color: style.background,
         borderRadius: BorderRadius.circular(borderRadius),
       ),
-      child: QIcon(asset: asset, color: style.foreground, size: iconSize),
+      child: asset != null
+          ? QIcon(asset: asset!, color: style.foreground, size: iconSize)
+          : Icon(icon, color: style.foreground, size: iconSize),
     );
   }
 }

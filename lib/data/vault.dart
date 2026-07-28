@@ -126,7 +126,9 @@ class Vault {
   Future<VaultData> read() async {
     final envelope = _readEnvelope(await _file.readAsString());
     final clear = await _decrypt(envelope, _key);
-    return VaultData.fromJson(jsonDecode(utf8.decode(clear)) as Map<String, dynamic>);
+    return VaultData.fromJson(
+      jsonDecode(utf8.decode(clear)) as Map<String, dynamic>,
+    );
   }
 
   Future<void> save(VaultData data) async {

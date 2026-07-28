@@ -7,32 +7,25 @@ import '../../ssh/session.dart';
 import '../../theme/theme.dart';
 import 'sftp_view.dart' show formatBytes;
 
-Future<void> showSessionInfoSheet(
-  BuildContext context,
-  HostSession session,
-) {
+Future<void> showSessionInfoDialog(BuildContext context, HostSession session) {
   final colors = context.appColors;
-  return showModalBottomSheet<void>(
+  return showDialog<void>(
     context: context,
-    backgroundColor: colors.background,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-    ),
-    builder: (_) => _InfoSheet(session: session),
+    barrierColor: colors.dialogBarrier,
+    builder: (_) => _InfoDialog(session: session),
   );
 }
 
-class _InfoSheet extends StatefulWidget {
-  const _InfoSheet({required this.session});
+class _InfoDialog extends StatefulWidget {
+  const _InfoDialog({required this.session});
 
   final HostSession session;
 
   @override
-  State<_InfoSheet> createState() => _InfoSheetState();
+  State<_InfoDialog> createState() => _InfoDialogState();
 }
 
-class _InfoSheetState extends State<_InfoSheet> {
+class _InfoDialogState extends State<_InfoDialog> {
   bool _refreshing = false;
 
   Future<void> _refresh() async {
@@ -54,6 +47,7 @@ class _InfoSheetState extends State<_InfoSheet> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final session = widget.session;
+    final media = MediaQuery.of(context).size;
 
     return AnimatedBuilder(
       animation: session,
@@ -61,19 +55,28 @@ class _InfoSheetState extends State<_InfoSheet> {
         final profile = session.profile;
         final metrics = profile?.metrics;
 
-        return SafeArea(
+        return Dialog(
+          backgroundColor: colors.background,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 40,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.82,
+              maxWidth: 460,
+              maxHeight: media.height * 0.8,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 10, 10),
+                  padding: const EdgeInsets.fromLTRB(18, 16, 8, 8),
                   child: Row(
                     children: [
-                      QIconBadge(
+                      QIconBadge.svg(
                         asset: osIconAsset(profile?.osId),
                         color: Color(osColorValue(profile?.osId)),
                       ),
@@ -84,6 +87,8 @@ class _InfoSheetState extends State<_InfoSheet> {
                           children: [
                             Text(
                               profile?.osPretty ?? 'Unknown system',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: colors.textPrimary,
                                 fontSize: 16,
@@ -113,18 +118,27 @@ class _InfoSheetState extends State<_InfoSheet> {
                                   color: colors.accent,
                                 ),
                               )
-                            : QIcon(
-                                asset: 'assets/ic/action/refresh.svg',
+                            : Icon(
+                                Icons.refresh,
                                 color: colors.textSecondary,
                                 size: 18,
                               ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(
+                          Icons.close,
+                          color: colors.textMuted,
+                          size: 18,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.only(bottom: 18),
                     child: Column(
                       children: [
                         if (metrics != null) ...[
@@ -135,9 +149,10 @@ class _InfoSheetState extends State<_InfoSheet> {
                           title: 'Details',
                           items: _details(session, profile),
                           itemBuilder: (context, row) => Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               SizedBox(
-                                width: 96,
+                                width: 92,
                                 child: Text(
                                   row.label,
                                   style: TextStyle(
@@ -213,7 +228,7 @@ class _MetricGrid extends StatelessWidget {
     final tiles = <Widget>[
       if (metrics.load1 != null)
         _MetricTile(
-          icon: 'assets/ic/state/cpu.svg',
+          icon: Icons.speed,
           label: 'Load avg',
           value: metrics.load1!.toStringAsFixed(2),
           caption:
@@ -225,14 +240,14 @@ class _MetricGrid extends StatelessWidget {
         )
       else if (metrics.cpuPercent != null)
         _MetricTile(
-          icon: 'assets/ic/state/cpu.svg',
+          icon: Icons.speed,
           label: 'CPU',
           value: '${metrics.cpuPercent!.toStringAsFixed(0)}%',
           ratio: (metrics.cpuPercent! / 100).clamp(0.0, 1.0),
         ),
       if (metrics.memTotalKb != null)
         _MetricTile(
-          icon: 'assets/ic/state/memory.svg',
+          icon: Icons.memory,
           label: 'Memory',
           value: metrics.memUsedRatio == null
               ? formatBytes(metrics.memTotalKb! * 1024)
@@ -242,7 +257,7 @@ class _MetricGrid extends StatelessWidget {
         ),
       if (metrics.diskTotalKb != null)
         _MetricTile(
-          icon: 'assets/ic/state/disk.svg',
+          icon: Icons.storage,
           label: 'Disk /',
           value: metrics.diskUsedRatio == null
               ? formatBytes(metrics.diskTotalKb! * 1024)
@@ -259,7 +274,7 @@ class _MetricGrid extends StatelessWidget {
       items: tiles,
       crossAxisCount: tiles.length.clamp(1, 3),
       mainAxisExtent: null,
-      cardPadding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      cardPadding: const EdgeInsets.all(12),
       itemBuilder: (context, tile) => tile,
     );
   }
@@ -274,7 +289,7 @@ class _MetricTile extends StatelessWidget {
     this.ratio,
   });
 
-  final String icon;
+  final IconData icon;
   final String label;
   final String value;
   final String? caption;
@@ -296,7 +311,7 @@ class _MetricTile extends StatelessWidget {
       children: [
         Row(
           children: [
-            QIcon(asset: icon, color: colors.textMuted, size: 14),
+            Icon(icon, color: colors.textMuted, size: 14),
             const SizedBox(width: 6),
             Text(
               label,

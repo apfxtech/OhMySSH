@@ -33,7 +33,8 @@ class SettingsPage extends StatelessWidget {
             GroupedCardList<QThemeMode>(
               title: 'Theme',
               items: QThemeMode.values,
-              onTap: (mode) => () => controller.setThemeMode(mode),
+              onTap: (mode) =>
+                  () => controller.setThemeMode(mode),
               itemBuilder: (context, mode) => Row(
                 children: [
                   Expanded(
@@ -87,28 +88,28 @@ class SettingsPage extends StatelessWidget {
 
   List<_Action> _vaultActions(BuildContext context, VoidCallback onLocked) => [
     _Action(
-      icon: 'assets/ic/action/export.svg',
+      icon: Icons.file_upload_outlined,
       color: const Color(0xFF589DFF),
       title: 'Export vault',
       subtitle: 'Save an encrypted copy',
       onTap: () => _export(context),
     ),
     _Action(
-      icon: 'assets/ic/action/import.svg',
+      icon: Icons.file_download_outlined,
       color: const Color(0xFF2ED34A),
       title: 'Import vault',
       subtitle: 'Merge systems and users from a file',
       onTap: () => _import(context),
     ),
     _Action(
-      icon: 'assets/ic/action/password.svg',
+      icon: Icons.password,
       color: const Color(0xFFFF9B34),
       title: 'Change master password',
       subtitle: 'Re-encrypts the vault in place',
       onTap: () => _changePassword(context),
     ),
     _Action(
-      icon: 'assets/ic/state/lock.svg',
+      icon: Icons.lock_outline,
       color: const Color(0xFFE85858),
       title: 'Lock now',
       subtitle: 'Closes every session and clears the vault from memory',
@@ -237,7 +238,7 @@ class _Action {
     required this.onTap,
   });
 
-  final String icon;
+  final IconData icon;
   final Color color;
   final String title;
   final String subtitle;
@@ -254,7 +255,7 @@ class _ActionRow extends StatelessWidget {
     final colors = context.appColors;
     return Row(
       children: [
-        QIconBadge(asset: action.icon, color: action.color),
+        QIconBadge(icon: action.icon, color: action.color),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -282,11 +283,7 @@ class _ActionRow extends StatelessWidget {
             ],
           ),
         ),
-        QIcon(
-          asset: 'assets/ic/nav/navigate.svg',
-          color: colors.textMuted,
-          size: 16,
-        ),
+        Icon(Icons.chevron_right, color: colors.textMuted, size: 16),
       ],
     );
   }

@@ -30,18 +30,14 @@ class IdentitiesPage extends StatelessWidget {
             actions: [
               QPageAppBarAction(
                 tooltip: 'New user',
-                icon: QIcon(
-                  asset: 'assets/ic/action/add.svg',
-                  color: colors.onAccent,
-                  size: 20,
-                ),
+                icon: Icon(Icons.add, color: colors.onAccent, size: 20),
                 onPressed: () => _openEditor(context, null),
               ),
             ],
           ),
           body: identities.isEmpty
               ? QEmptyView(
-                  icon: 'assets/ic/nav/identities.svg',
+                  icon: Icons.person_outline,
                   title: 'No users yet',
                   message:
                       'A user holds a login and its password or private key. '
@@ -59,7 +55,8 @@ class IdentitiesPage extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 14, bottom: 20),
                   child: GroupedCardList<Identity>(
                     items: identities,
-                    onTap: (identity) => () => _openEditor(context, identity),
+                    onTap: (identity) =>
+                        () => _openEditor(context, identity),
                     itemBuilder: (context, identity) =>
                         _IdentityRow(identity: identity),
                   ),
@@ -71,7 +68,9 @@ class IdentitiesPage extends StatelessWidget {
 
   Future<void> _openEditor(BuildContext context, Identity? identity) =>
       Navigator.of(context).push<void>(
-        MaterialPageRoute(builder: (_) => IdentityEditorPage(identity: identity)),
+        MaterialPageRoute(
+          builder: (_) => IdentityEditorPage(identity: identity),
+        ),
       );
 }
 
@@ -91,9 +90,7 @@ class _IdentityRow extends StatelessWidget {
     return Row(
       children: [
         QIconBadge(
-          asset: isKey
-              ? 'assets/ic/action/key.svg'
-              : 'assets/ic/action/password.svg',
+          icon: isKey ? Icons.vpn_key_outlined : Icons.password,
           color: isKey ? colors.accent : colors.info,
         ),
         const SizedBox(width: 10),
@@ -128,11 +125,7 @@ class _IdentityRow extends StatelessWidget {
             ],
           ),
         ),
-        QIcon(
-          asset: 'assets/ic/nav/navigate.svg',
-          color: colors.textMuted,
-          size: 16,
-        ),
+        Icon(Icons.chevron_right, color: colors.textMuted, size: 16),
       ],
     );
   }

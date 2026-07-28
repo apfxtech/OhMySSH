@@ -65,9 +65,28 @@ class HostProfile {
 }
 
 const Set<String> kKnownOsIds = {
-  'linux', 'ubuntu', 'debian', 'arch', 'fedora', 'centos', 'rhel', 'alpine',
-  'opensuse', 'gentoo', 'manjaro', 'mint', 'rocky', 'almalinux', 'kali',
-  'raspbian', 'freebsd', 'openbsd', 'netbsd', 'macos', 'windows', 'unknown',
+  'linux',
+  'ubuntu',
+  'debian',
+  'arch',
+  'fedora',
+  'centos',
+  'rhel',
+  'alpine',
+  'opensuse',
+  'gentoo',
+  'manjaro',
+  'mint',
+  'rocky',
+  'almalinux',
+  'kali',
+  'raspbian',
+  'freebsd',
+  'openbsd',
+  'netbsd',
+  'macos',
+  'windows',
+  'unknown',
 };
 
 String osIconAsset(String? osId) {
@@ -244,7 +263,9 @@ echo "@@disk"; df -Pk / 2>/dev/null | tail -1
 
   return HostProfile(
     osId: kKnownOsIds.contains(id) ? id : 'unknown',
-    osPretty: kernelLines.isEmpty ? kernelName : '$kernelName ${kernelLines[0]}',
+    osPretty: kernelLines.isEmpty
+        ? kernelName
+        : '$kernelName ${kernelLines[0]}',
     kernel: kernelLines.isNotEmpty ? kernelLines[0] : null,
     arch: kernelLines.length > 1 ? kernelLines[1] : null,
     hostname: kernelLines.length > 2 ? kernelLines[2] : null,

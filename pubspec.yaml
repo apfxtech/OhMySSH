@@ -34,8 +34,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    # OS logos only — everything functional uses Material Icons.
     - assets/ic/os/
-    - assets/ic/action/
-    - assets/ic/nav/
-    - assets/ic/state/
-    - assets/ic/file/

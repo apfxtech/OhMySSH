@@ -1,26 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../components/icon.dart';
 import '../theme/theme.dart';
 
 enum RootTab {
-  systems('Systems', 'hosts'),
-  users('Users', 'identities'),
-  sessions('Sessions', 'terminal'),
-  settings('Settings', 'settings');
+  systems('Systems', Icons.dns_outlined, Icons.dns),
+  users('Users', Icons.person_outline, Icons.person),
+  sessions('Sessions', Icons.terminal_outlined, Icons.terminal),
+  settings('Settings', Icons.settings_outlined, Icons.settings);
 
-  const RootTab(this.label, this.icon);
+  const RootTab(this.label, this.icon, this.selectedIcon);
 
   final String label;
-  final String icon;
-
-  String asset(bool selected) {
-    const hasFilled = {'hosts', 'identities', 'settings'};
-    if (selected && hasFilled.contains(icon)) {
-      return 'assets/ic/nav/$icon-filled.svg';
-    }
-    return 'assets/ic/nav/$icon.svg';
-  }
+  final IconData icon;
+  final IconData selectedIcon;
 }
 
 class RootScaffold extends StatelessWidget {
@@ -104,7 +96,11 @@ class _BottomTab extends StatelessWidget {
                   alignment: Alignment.center,
                   clipBehavior: Clip.none,
                   children: [
-                    QIcon(asset: tab.asset(selected), color: color, size: 24),
+                    Icon(
+                      selected ? tab.selectedIcon : tab.icon,
+                      color: color,
+                      size: 23,
+                    ),
                     if (badge > 0)
                       Positioned(
                         right: 2,

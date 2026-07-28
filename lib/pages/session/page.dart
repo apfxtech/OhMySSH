@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../components/appbar.dart';
-import '../../components/icon.dart';
 import '../../ssh/manager.dart';
 import '../../ssh/session.dart';
 import '../../theme/theme.dart';
 import '../../widgets/fields.dart';
 import 'connect_view.dart';
-import 'info_sheet.dart';
+import 'info_dialog.dart';
 import 'sftp_view.dart';
 import 'terminal_view.dart';
 
@@ -65,7 +64,9 @@ class _SessionPageState extends State<SessionPage> {
     if (tab.mode == TabMode.sftp) {
       tab.session.sftpTabOpen = false;
       if (_activeKey == tab.key) {
-        setState(() => _activeKey = '${tab.session.id}:${TabMode.terminal.name}');
+        setState(
+          () => _activeKey = '${tab.session.id}:${TabMode.terminal.name}',
+        );
       }
       return;
     }
@@ -109,7 +110,7 @@ class _SessionPageState extends State<SessionPage> {
             backgroundColor: colors.background,
             appBar: const QPageAppBar(title: 'Sessions'),
             body: const QEmptyView(
-              icon: 'assets/ic/nav/terminal.svg',
+              icon: Icons.terminal,
               title: 'No open sessions',
               message: 'Tap a system to connect.',
             ),
@@ -130,18 +131,14 @@ class _SessionPageState extends State<SessionPage> {
               if (session.state == SessionState.closed)
                 QPageAppBarAction(
                   tooltip: 'Reconnect',
-                  icon: QIcon(
-                    asset: 'assets/ic/action/connect.svg',
-                    color: colors.onAccent,
-                    size: 20,
-                  ),
+                  icon: Icon(Icons.autorenew, color: colors.onAccent, size: 20),
                   onPressed: session.connect,
                 ),
               if (session.isConnected && active.mode == TabMode.terminal)
                 QPageAppBarAction(
                   tooltip: 'Open SFTP',
-                  icon: QIcon(
-                    asset: 'assets/ic/nav/sftp.svg',
+                  icon: Icon(
+                    Icons.folder_open,
                     color: colors.onAccent,
                     size: 20,
                   ),
@@ -149,12 +146,8 @@ class _SessionPageState extends State<SessionPage> {
                 ),
               QPageAppBarAction(
                 tooltip: 'System info',
-                icon: QIcon(
-                  asset: 'assets/ic/state/cpu.svg',
-                  color: colors.onAccent,
-                  size: 20,
-                ),
-                onPressed: () => showSessionInfoSheet(context, session),
+                icon: Icon(Icons.speed, color: colors.onAccent, size: 20),
+                onPressed: () => showSessionInfoDialog(context, session),
               ),
             ],
             bottom: _TabStrip(
@@ -251,11 +244,7 @@ class _TabStrip extends StatelessWidget implements PreferredSizeWidget {
             IconButton(
               tooltip: 'New session',
               onPressed: () => Navigator.of(context).pop(),
-              icon: QIcon(
-                asset: 'assets/ic/action/add.svg',
-                color: colors.textMuted,
-                size: 18,
-              ),
+              icon: Icon(Icons.add, color: colors.textMuted, size: 18),
             ),
           ],
         ),
@@ -296,10 +285,8 @@ class _TabChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                QIcon(
-                  asset: tab.mode == TabMode.sftp
-                      ? 'assets/ic/nav/sftp.svg'
-                      : 'assets/ic/nav/terminal.svg',
+                Icon(
+                  tab.mode == TabMode.sftp ? Icons.folder_open : Icons.terminal,
                   color: foreground,
                   size: 15,
                 ),
@@ -338,11 +325,7 @@ class _TabChip extends StatelessWidget {
                     width: 28,
                     height: 28,
                   ),
-                  icon: QIcon(
-                    asset: 'assets/ic/action/close.svg',
-                    color: colors.textMuted,
-                    size: 13,
-                  ),
+                  icon: Icon(Icons.close, color: colors.textMuted, size: 13),
                 ),
               ],
             ),

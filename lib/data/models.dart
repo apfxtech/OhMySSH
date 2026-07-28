@@ -80,7 +80,8 @@ class HostGroup {
   final String id;
   final String name;
 
-  HostGroup copyWith({String? name}) => HostGroup(id: id, name: name ?? this.name);
+  HostGroup copyWith({String? name}) =>
+      HostGroup(id: id, name: name ?? this.name);
 
   Map<String, dynamic> toJson() => {'id': id, 'name': name};
 
@@ -97,6 +98,7 @@ class Host {
     required this.hostname,
     this.port = 22,
     this.identityId,
+    this.inlineIdentity,
     this.groupId,
     this.note,
     this.knownHostKey,
@@ -108,7 +110,13 @@ class Host {
   final String label;
   final String hostname;
   final int port;
+
   final String? identityId;
+
+  /// Mutually exclusive with [identityId]; [resolvedIdentity] picks between
+  /// them.
+  final Identity? inlineIdentity;
+
   final String? groupId;
   final String? note;
 
@@ -119,6 +127,8 @@ class Host {
   final String? osId;
   final String? osPretty;
 
+  bool get hasInlineIdentity => inlineIdentity != null;
+
   String get displayLabel => label.isNotEmpty ? label : hostname;
 
   String get endpoint => port == 22 ? hostname : '$hostname:$port';
@@ -128,12 +138,14 @@ class Host {
     String? hostname,
     int? port,
     String? identityId,
+    Identity? inlineIdentity,
     String? groupId,
     String? note,
     String? knownHostKey,
     String? osId,
     String? osPretty,
     bool clearIdentity = false,
+    bool clearInlineIdentity = false,
     bool clearGroup = false,
   }) => Host(
     id: id,
@@ -141,6 +153,9 @@ class Host {
     hostname: hostname ?? this.hostname,
     port: port ?? this.port,
     identityId: clearIdentity ? null : (identityId ?? this.identityId),
+    inlineIdentity: clearInlineIdentity
+        ? null
+        : (inlineIdentity ?? this.inlineIdentity),
     groupId: clearGroup ? null : (groupId ?? this.groupId),
     note: note ?? this.note,
     knownHostKey: knownHostKey ?? this.knownHostKey,
@@ -154,6 +169,7 @@ class Host {
     'hostname': hostname,
     'port': port,
     if (identityId != null) 'identityId': identityId,
+    if (inlineIdentity != null) 'inlineIdentity': inlineIdentity!.toJson(),
     if (groupId != null) 'groupId': groupId,
     if (note != null) 'note': note,
     if (knownHostKey != null) 'knownHostKey': knownHostKey,
@@ -167,6 +183,10 @@ class Host {
     hostname: json['hostname'] as String? ?? '',
     port: (json['port'] as num?)?.toInt() ?? 22,
     identityId: json['identityId'] as String?,
+    inlineIdentity: switch (json['inlineIdentity']) {
+      final Map<String, dynamic> raw => Identity.fromJson(raw),
+      _ => null,
+    },
     groupId: json['groupId'] as String?,
     note: json['note'] as String?,
     knownHostKey: json['knownHostKey'] as String?,

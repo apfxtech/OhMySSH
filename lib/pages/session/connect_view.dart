@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../components/icon.dart';
 import '../../ssh/session.dart';
 import '../../theme/theme.dart';
 
@@ -107,7 +106,9 @@ class _CheckpointRow extends StatelessWidget {
           SizedBox(
             width: 22,
             height: 22,
-            child: Center(child: _StatusMark(status: checkpoint.status, color: color)),
+            child: Center(
+              child: _StatusMark(status: checkpoint.status, color: color),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -168,15 +169,11 @@ class _StatusMark extends StatelessWidget {
           decoration: BoxDecoration(shape: BoxShape.circle, color: color),
         );
       case StageStatus.done:
-        return QIcon(asset: 'assets/ic/state/ok.svg', color: color, size: 18);
+        return Icon(Icons.check_circle, color: color, size: 18);
       case StageStatus.failed:
-        return QIcon(asset: 'assets/ic/state/error.svg', color: color, size: 18);
+        return Icon(Icons.error_outline, color: color, size: 18);
       case StageStatus.skipped:
-        return QIcon(
-          asset: 'assets/ic/state/warning.svg',
-          color: color,
-          size: 18,
-        );
+        return Icon(Icons.warning_amber_rounded, color: color, size: 18);
     }
   }
 }

@@ -33,8 +33,8 @@ class HostsPage extends StatelessWidget {
             actions: [
               QPageAppBarAction(
                 tooltip: 'New group',
-                icon: QIcon(
-                  asset: 'assets/ic/nav/group.svg',
+                icon: Icon(
+                  Icons.create_new_folder_outlined,
                   color: colors.onAccent,
                   size: 20,
                 ),
@@ -42,18 +42,14 @@ class HostsPage extends StatelessWidget {
               ),
               QPageAppBarAction(
                 tooltip: 'New system',
-                icon: QIcon(
-                  asset: 'assets/ic/action/add.svg',
-                  color: colors.onAccent,
-                  size: 20,
-                ),
+                icon: Icon(Icons.add, color: colors.onAccent, size: 20),
                 onPressed: () => _openEditor(context, null),
               ),
             ],
           ),
           body: buckets.isEmpty
               ? QEmptyView(
-                  icon: 'assets/ic/nav/hosts.svg',
+                  icon: Icons.dns_outlined,
                   title: 'No systems yet',
                   message:
                       'Add a system to connect over SSH and browse it over SFTP.',
@@ -76,7 +72,8 @@ class HostsPage extends StatelessWidget {
                           child: GroupedCardList<Host>(
                             title: entry.key?.name ?? 'Ungrouped',
                             items: entry.value,
-                            onTap: (host) => () => _connect(context, host),
+                            onTap: (host) =>
+                                () => _connect(context, host),
                             itemBuilder: (context, host) =>
                                 _HostRow(host: host),
                           ),
@@ -108,10 +105,9 @@ class HostsPage extends StatelessWidget {
     );
   }
 
-  Future<void> _openEditor(BuildContext context, Host? host) =>
-      Navigator.of(context).push<void>(
-        MaterialPageRoute(builder: (_) => HostEditorPage(host: host)),
-      );
+  Future<void> _openEditor(BuildContext context, Host? host) => Navigator.of(
+    context,
+  ).push<void>(MaterialPageRoute(builder: (_) => HostEditorPage(host: host)));
 
   Future<void> _createGroup(BuildContext context) async {
     final name = await promptForText(
@@ -140,7 +136,7 @@ class _HostRow extends StatelessWidget {
 
     return Row(
       children: [
-        QIconBadge(
+        QIconBadge.svg(
           asset: osIconAsset(host.osId),
           color: Color(osColorValue(host.osId)),
         ),
@@ -178,11 +174,7 @@ class _HostRow extends StatelessWidget {
         _EditButton(host: host),
         Padding(
           padding: const EdgeInsets.only(left: 2),
-          child: QIcon(
-            asset: 'assets/ic/nav/navigate.svg',
-            color: colors.textMuted,
-            size: 16,
-          ),
+          child: Icon(Icons.chevron_right, color: colors.textMuted, size: 16),
         ),
       ],
     );
@@ -202,11 +194,7 @@ class _EditButton extends StatelessWidget {
       onPressed: () => Navigator.of(context).push<void>(
         MaterialPageRoute(builder: (_) => HostEditorPage(host: host)),
       ),
-      icon: QIcon(
-        asset: 'assets/ic/action/edit.svg',
-        color: colors.textMuted,
-        size: 18,
-      ),
+      icon: Icon(Icons.edit_outlined, color: colors.textMuted, size: 18),
     );
   }
 }

@@ -69,7 +69,17 @@ class VaultStore extends ChangeNotifier {
   }
 
   Identity? identityFor(Host host) {
+    final inline = host.inlineIdentity;
+    if (inline != null) return inline;
     final id = host.identityId;
+    if (id == null) return null;
+    for (final identity in _data.identities) {
+      if (identity.id == id) return identity;
+    }
+    return null;
+  }
+
+  Identity? identityById(String? id) {
     if (id == null) return null;
     for (final identity in _data.identities) {
       if (identity.id == id) return identity;

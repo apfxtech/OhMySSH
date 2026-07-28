@@ -1,8 +1,12 @@
 # Icons
 
-Every SVG here is currently the **same placeholder glyph**. The filenames and
-the call sites are final — only the artwork is pending. Replace files one at a
-time; nothing in the code needs to change.
+Only **OS and distro logos** live here. Everything functional — actions, nav,
+status, file types — uses Material `Icons` directly from the Flutter SDK, so
+there is nothing to draw for those.
+
+Every SVG in `os/` is currently the **same placeholder glyph**. The filenames
+are final; only the artwork is pending. Replace them one at a time — no code
+change needed.
 
 ## Rules for replacement art
 
@@ -10,33 +14,25 @@ time; nothing in the code needs to change.
 result with `BlendMode.srcIn`. That means:
 
 - **Only the alpha channel survives.** Whatever colour is in the file is thrown
-  away, so multi-colour brand logos flatten to a single silhouette. Draw for
+  away, so a multi-colour brand logo flattens to a single silhouette. Draw for
   that.
 - **24×24 viewBox**, solid fills, no strokes, no gradients, no `<text>`.
-- Keep the glyph inside the box with a little padding — `QIconBadge` puts it on
-  a 36×36 pill at 24px.
+- Keep the glyph inside the box with a little padding — `QIconBadge.svg` puts it
+  on a 36×36 pill at 24px.
 
 Tint comes from the call site and flips with the theme via `QIconBadgeStyle`:
 light theme paints a solid colour pill behind a white glyph, dark theme a
 translucent pill behind a coloured glyph.
 
-## Directories
+## Adding a distro
 
-| Directory | Used for |
-|---|---|
-| `os/` | Distro and OS badges. Basename must match the `ID=` field of `/etc/os-release` — see `kKnownOsIds` in `lib/ssh/probe.dart`. Unknown distros fall back to `linux.svg` via `ID_LIKE`. |
-| `action/` | Verbs: add, edit, delete, upload, download, import/export, … |
-| `nav/` | Bottom bar and row chevrons. `hosts`, `identities` and `settings` also need a `-filled` variant for the selected state. |
-| `state/` | Connect checkpoints and the metrics tiles. |
-| `file/` | SFTP browser rows, picked by extension in `sftp_view.dart`. |
-
-## Adding a new distro
-
-1. Drop `assets/ic/os/<id>.svg` where `<id>` is the os-release `ID`.
+1. Drop `assets/ic/os/<id>.svg`, where `<id>` is the `ID=` field from that
+   distro's `/etc/os-release`.
 2. Add `<id>` to `kKnownOsIds` in `lib/ssh/probe.dart`.
 3. Optionally give it a tint in `osColorValue()` in the same file.
 
-Nothing else — `pubspec.yaml` includes the whole directory.
+Nothing else — `pubspec.yaml` ships the whole directory. Unknown derivatives
+already fall back to their family icon via `ID_LIKE`.
 
 ## Licensing
 

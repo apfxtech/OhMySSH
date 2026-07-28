@@ -111,7 +111,9 @@ class GroupedCardList<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final last = items.length - 1;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: kGroupedHorizontalPadding),
+      padding: const EdgeInsets.symmetric(
+        horizontal: kGroupedHorizontalPadding,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -207,7 +209,9 @@ class GroupedCardGrid<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: kGroupedHorizontalPadding),
+      padding: const EdgeInsets.symmetric(
+        horizontal: kGroupedHorizontalPadding,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -247,7 +251,9 @@ class GroupedCardGrid<T> extends StatelessWidget {
                       : CrossAxisAlignment.center,
                   children: cells,
                 );
-                rows.add(fixedHeight == null ? IntrinsicHeight(child: row) : row);
+                rows.add(
+                  fixedHeight == null ? IntrinsicHeight(child: row) : row,
+                );
               }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
