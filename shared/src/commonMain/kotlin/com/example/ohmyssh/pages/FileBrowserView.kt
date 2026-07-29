@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EditNote
@@ -76,6 +77,9 @@ import com.example.ohmyssh.platform.FilePick
 import com.example.ohmyssh.platform.appPlatform
 import com.example.ohmyssh.platform.isDesktop
 import com.example.ohmyssh.services.Log
+import com.example.ohmyssh.session.PaneKind
+import com.example.ohmyssh.session.Workspace
+import com.example.ohmyssh.session.paneKey
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.ui.DragPayload
@@ -369,6 +373,16 @@ fun FileBrowserView(browser: FileBrowserState, paneKey: String) {
                 Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                FloatingAction(
+                    icon = Icons.Filled.Computer,
+                    background = colors.card,
+                    foreground = colors.textSecondary,
+                    enabled = true,
+                ) {
+                    val pane = Workspace.requestLocal()
+                    Workspace.showBeside(paneKey(pane.id, PaneKind.FILES))
+                }
+                Spacer(Modifier.height(10.dp))
                 FloatingAction(
                     icon = Icons.Outlined.CreateNewFolder,
                     background = colors.card,
