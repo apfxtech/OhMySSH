@@ -1,7 +1,6 @@
 package com.example.ohmyssh.terminal
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
@@ -161,6 +160,12 @@ fun TerminalView(
         terminal.onOutput?.invoke(data)
     }
 
+    // The requester is not attached until the field is laid out, and a request
+    // before that throws rather than no-opping.
+    fun focusInput() {
+        runCatching { focusRequester.requestFocus() }
+    }
+
     BoxWithConstraints(
         modifier
             .background(palette.background)
@@ -193,7 +198,7 @@ fun TerminalView(
                 },
             )
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { focusRequester.requestFocus() })
+                detectTapGestures(onTap = { focusInput() })
             },
     ) {
         val widthPx = with(density) { maxWidth.toPx() }
@@ -207,7 +212,7 @@ fun TerminalView(
         }
 
         if (autofocus) {
-            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+            LaunchedEffect(Unit) { focusInput() }
         }
 
         val revision = terminal.revision
@@ -315,12 +320,14 @@ fun TerminalView(
             },
             textStyle = TextStyle(color = Color.Transparent, fontSize = 1.sp),
             cursorBrush = SolidColor(Color.Transparent),
+            // No .focusable() here: that would add a focus target of its own
+            // and swallow the request, leaving the field — and so every
+            // keystroke — unfocused.
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .size(1.dp)
                 .alpha(0f)
-                .focusRequester(focusRequester)
-                .focusable(),
+                .focusRequester(focusRequester),
         )
     }
 }
