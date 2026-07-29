@@ -1,7 +1,9 @@
 package com.example.ohmyssh.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -36,10 +38,12 @@ val kGroupedCardPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 8.dp, b
 val kGroupedGridMaxExtent = 104.dp
 val kGroupedGridTileHeight = 104.dp
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GroupedCard(
     shape: RoundedCornerShape,
     onTap: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
     padding: PaddingValues = kGroupedCardPadding,
     background: (@Composable () -> Unit)? = null,
     contentAlignment: Alignment = Alignment.CenterStart,
@@ -51,7 +55,23 @@ fun GroupedCard(
         modifier
             .clip(shape)
             .background(colors.card)
-            .let { if (onTap != null) it.clickable(onClick = onTap) else it },
+            .let { base ->
+                when {
+                    // One gesture owner for the whole card: a detectTapGestures
+                    // inside a row would consume the press and the card would
+                    // stop reacting to taps entirely.
+                    onTap != null && onLongPress != null -> base.combinedClickable(
+                        onClick = onTap,
+                        onLongClick = onLongPress,
+                    )
+                    onTap != null -> base.clickable(onClick = onTap)
+                    onLongPress != null -> base.combinedClickable(
+                        onClick = {},
+                        onLongClick = onLongPress,
+                    )
+                    else -> base
+                }
+            },
     ) {
         background?.invoke()
         Box(
@@ -94,6 +114,7 @@ fun <T> GroupedCardList(
     title: String? = null,
     header: (@Composable () -> Unit)? = null,
     onTap: ((T) -> (() -> Unit)?)? = null,
+    onLongPress: ((T) -> (() -> Unit)?)? = null,
     cardPadding: PaddingValues = kGroupedCardPadding,
     backgroundBuilder: ((T) -> (@Composable () -> Unit)?)? = null,
     itemBuilder: @Composable (T) -> Unit,
@@ -110,6 +131,7 @@ fun <T> GroupedCardList(
             GroupedCard(
                 shape = listShape(index, last),
                 onTap = onTap?.invoke(item),
+                onLongPress = onLongPress?.invoke(item),
                 padding = cardPadding,
                 background = backgroundBuilder?.invoke(item),
                 modifier = Modifier.fillMaxWidth(),

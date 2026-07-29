@@ -63,13 +63,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.gestures.detectTapGestures
 import com.example.ohmyssh.components.GroupedCardList
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.navigation.LocalNavigator
@@ -516,13 +514,13 @@ private fun EntrySection(
         title = title,
         items = entries,
         onTap = { entry -> { onOpen(entry) } },
+        onLongPress = { entry -> { onEnterSelection(entry) } },
         itemBuilder = { entry ->
             EntryRow(
                 entry = entry,
                 selected = selected.contains(entry.name),
                 selectionMode = selectionMode,
                 onAction = { action -> onAction(action, entry) },
-                onLongPress = { onEnterSelection(entry) },
             )
         },
     )
@@ -727,7 +725,6 @@ private fun EntryRow(
     selected: Boolean,
     selectionMode: Boolean,
     onAction: (EntryAction) -> Unit,
-    onLongPress: () -> Unit,
 ) {
     val colors = appColors
     var menuOpen by remember { mutableStateOf(false) }
@@ -744,14 +741,7 @@ private fun EntryRow(
         entry.mode?.let { add(formatMode(it)) }
     }
 
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .pointerInput(entry.name) {
-                detectTapGestures(onLongPress = { onLongPress() })
-            },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (selectionMode) {
             Icon(
                 if (selected) Icons.Filled.CheckCircle else Icons.Filled.Circle,
