@@ -457,7 +457,6 @@ private fun PickerBody(window: PaneWindow) {
             val session = SessionManager.openSerial(entry)
             Workspace.resolve(window.id, PaneRef.Shell(session.id))
         },
-        onOpenLocal = { Workspace.resolve(window.id, PaneRef.Local) },
     )
 }
 
