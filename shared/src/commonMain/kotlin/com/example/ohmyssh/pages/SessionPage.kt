@@ -69,6 +69,8 @@ import com.example.ohmyssh.components.kGroupedInnerRadius
 import com.example.ohmyssh.components.kGroupedOuterRadius
 import com.example.ohmyssh.fs.FileBrowsers
 import com.example.ohmyssh.fs.LocalSource
+import com.example.ohmyssh.data.Host
+import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.fs.SftpSource
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.serial.SerialSession
@@ -84,6 +86,7 @@ import com.example.ohmyssh.terminal.TerminalView
 import com.example.ohmyssh.terminal.terminalPalette
 import com.example.ohmyssh.theme.QAppColors
 import com.example.ohmyssh.theme.appColors
+import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.ui.PaneDrag
 import com.example.ohmyssh.ui.PaneDragGhost
 import com.example.ohmyssh.ui.paneDropTarget
@@ -147,6 +150,22 @@ fun SessionPage(initialKey: String) {
             }
             add(TabGroup(tabs))
         }
+        for (pane in Workspace.pickers) {
+            add(
+                TabGroup(
+                    listOf(
+                        TabItem(
+                            key = paneKey(pane.id, PaneKind.PICK),
+                            groupId = pane.id,
+                            kind = PaneKind.PICK,
+                            title = "New session",
+                            session = null,
+                            local = null,
+                        ),
+                    ),
+                ),
+            )
+        }
         for (pane in Workspace.localPanes) {
             add(
                 TabGroup(
@@ -191,6 +210,11 @@ fun SessionPage(initialKey: String) {
     fun closeTab(tab: TabItem) {
         scope.launch {
             val target = tab.session
+            if (tab.kind == PaneKind.PICK) {
+                Workspace.closePicker(tab.groupId)
+                if (tabs.size <= 1) navigator.pop()
+                return@launch
+            }
             if (tab.kind == PaneKind.FILES) {
                 if (target is HostSession) {
                     target.sftpTabOpen = false
@@ -224,21 +248,6 @@ fun SessionPage(initialKey: String) {
         }
     }
 
-    fun splitPartner(): String {
-        val target = active.session
-        if (active.kind == PaneKind.SHELL &&
-            target is HostSession &&
-            target.isConnected &&
-            !target.sftpTabOpen
-        ) {
-            target.sftpTabOpen = true
-            return paneKey(target.id, PaneKind.FILES)
-        }
-        tabs.firstOrNull { it.key != active.key && !Workspace.slots.contains(it.key) }
-            ?.let { return it.key }
-        return paneKey(Workspace.openLocal().id, PaneKind.FILES)
-    }
-
     val session = active.session
 
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
@@ -252,7 +261,11 @@ fun SessionPage(initialKey: String) {
             appBar = {
                 QPageAppBar(
                     title = active.title,
-                    subtitle = session?.subtitle ?: "Local files",
+                    subtitle = when {
+                        session != null -> session.subtitle
+                        active.kind == PaneKind.PICK -> "Choose a system"
+                        else -> "Local files"
+                    },
                     statusColor = session?.let { statusColor(colors, it) },
                     actions = {
                         if (session != null && session.state == SessionState.CLOSED) {
@@ -286,7 +299,7 @@ fun SessionPage(initialKey: String) {
                                 if (Workspace.isSplit) {
                                     Workspace.unsplit()
                                 } else {
-                                    Workspace.showBeside(splitPartner())
+                                    Workspace.showBeside(Workspace.openPicker())
                                 }
                             },
                         )
@@ -295,7 +308,11 @@ fun SessionPage(initialKey: String) {
                             icon = Icons.Filled.Add,
                             iconSize = 22.dp,
                             native = true,
-                            onPressed = { navigator.pop() },
+                            onPressed = {
+                                if (active.kind != PaneKind.PICK) {
+                                    Workspace.show(Workspace.openPicker())
+                                }
+                            },
                         )
                         if (session is SerialSession) {
                             QPageAppBarAction(
@@ -454,6 +471,11 @@ private fun PaneBody(tab: TabItem) {
     val colors = appColors
     val session = tab.session
     val scope = rememberCoroutineScope()
+
+    if (tab.kind == PaneKind.PICK) {
+        PickerBody(tab)
+        return
+    }
 
     if (tab.kind == PaneKind.FILES) {
         when {
@@ -650,13 +672,50 @@ private fun TabContent(tab: TabItem, focused: Boolean, showing: Boolean, onClose
     }
 }
 
+@Composable
+private fun PickerBody(tab: TabItem) {
+    val navigator = LocalNavigator.current
+
+    fun open(host: Host, files: Boolean) {
+        if (VaultStore.identityFor(host) == null) {
+            AppToasts.show("Assign a user to this system first", actionLabel = "Edit") {
+                navigator.push { HostEditorPage(host) }
+            }
+            return
+        }
+        val session = if (files) {
+            SessionManager.sessions.filterIsInstance<HostSession>()
+                .firstOrNull { it.host.id == host.id && it.isConnected }
+                ?: SessionManager.open(host)
+        } else {
+            SessionManager.open(host)
+        }
+        if (files) session.sftpTabOpen = true
+        Workspace.resolvePicker(
+            tab.groupId,
+            paneKey(session.id, if (files) PaneKind.FILES else PaneKind.SHELL),
+        )
+    }
+
+    ConnectionPicker(
+        onOpenShell = { host -> open(host, files = false) },
+        onOpenSftp = { host -> open(host, files = true) },
+        onOpenSerial = { entry ->
+            val session = SessionManager.openSerial(entry)
+            Workspace.resolvePicker(tab.groupId, paneKey(session.id, PaneKind.SHELL))
+        },
+    )
+}
+
 private fun tabIcon(tab: TabItem): ImageVector = when {
+    tab.kind == PaneKind.PICK -> Icons.Filled.Add
     tab.kind == PaneKind.SHELL -> Icons.Outlined.Terminal
     tab.session == null -> Icons.Filled.Computer
     else -> Icons.Filled.FolderOpen
 }
 
 private fun tabKindLabel(tab: TabItem): String = when {
+    tab.kind == PaneKind.PICK -> "Choose"
     tab.kind == PaneKind.SHELL -> "Shell"
     tab.session == null -> "Files"
     else -> "SFTP"

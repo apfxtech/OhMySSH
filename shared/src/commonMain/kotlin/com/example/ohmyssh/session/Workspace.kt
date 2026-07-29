@@ -7,17 +7,20 @@ import androidx.compose.runtime.setValue
 import com.example.ohmyssh.data.newId
 import com.example.ohmyssh.fs.FileBrowsers
 
-enum class PaneKind { SHELL, FILES }
+enum class PaneKind { SHELL, FILES, PICK }
 
-fun paneKey(groupId: String, kind: PaneKind): String =
-    "$groupId:${if (kind == PaneKind.SHELL) "shell" else "files"}"
+fun paneKey(groupId: String, kind: PaneKind): String = "$groupId:${kind.name.lowercase()}"
 
 class LocalPane(val id: String)
+
+class PickerPane(val id: String)
 
 object Workspace {
     const val MAX_SLOTS = 2
 
     val localPanes = mutableStateListOf<LocalPane>()
+
+    val pickers = mutableStateListOf<PickerPane>()
 
     val slots = mutableStateListOf<String>()
 
@@ -86,6 +89,28 @@ object Workspace {
     fun requestLocal(): LocalPane =
         localPanes.firstOrNull { !slots.contains(paneKey(it.id, PaneKind.FILES)) } ?: openLocal()
 
+    fun openPicker(): String {
+        val pane = PickerPane("new-${newId()}")
+        pickers.add(pane)
+        return paneKey(pane.id, PaneKind.PICK)
+    }
+
+    fun resolvePicker(pickerId: String, key: String) {
+        val index = slots.indexOf(paneKey(pickerId, PaneKind.PICK))
+        pickers.removeAll { it.id == pickerId }
+        if (index < 0) {
+            show(key)
+            return
+        }
+        slots[index] = key
+        focused = index
+    }
+
+    fun closePicker(pickerId: String) {
+        hide(paneKey(pickerId, PaneKind.PICK))
+        pickers.removeAll { it.id == pickerId }
+    }
+
     fun closeLocal(id: String) {
         hide(paneKey(id, PaneKind.FILES))
         FileBrowsers.forgetGroup("$id:")
@@ -102,6 +127,7 @@ object Workspace {
     fun reset() {
         slots.clear()
         focused = 0
+        pickers.clear()
         for (pane in localPanes.toList()) FileBrowsers.forgetGroup("${pane.id}:")
         localPanes.clear()
     }

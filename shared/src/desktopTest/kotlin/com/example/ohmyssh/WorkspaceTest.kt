@@ -84,6 +84,32 @@ class WorkspaceTest {
     }
 
     @Test
+    fun thePickedSystemTakesOverThePickersOwnSlot() {
+        Workspace.show(shellA)
+        Workspace.showBeside(Workspace.openPicker())
+        val picker = Workspace.pickers.single()
+        assertEquals(2, Workspace.slots.size)
+
+        Workspace.resolvePicker(picker.id, shellB)
+
+        assertEquals(listOf(shellA, shellB), Workspace.slots.toList())
+        assertEquals(shellB, Workspace.focusedKey)
+        assertTrue(Workspace.pickers.isEmpty())
+    }
+
+    @Test
+    fun dismissingAPickerLeavesTheOtherPaneWhereItWas() {
+        Workspace.show(shellA)
+        val picker = Workspace.openPicker()
+        Workspace.showBeside(picker)
+
+        Workspace.closePicker(Workspace.pickers.single().id)
+
+        assertEquals(listOf(shellA), Workspace.slots.toList())
+        assertTrue(Workspace.pickers.isEmpty())
+    }
+
+    @Test
     fun localFilesReusesAPaneThatIsNotShowing() {
         val first = Workspace.requestLocal()
         assertEquals(1, Workspace.localPanes.size)
