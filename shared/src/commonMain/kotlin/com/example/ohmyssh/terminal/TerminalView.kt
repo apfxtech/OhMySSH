@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -130,6 +131,7 @@ fun TerminalView(
     palette: TerminalPalette,
     modifier: Modifier = Modifier,
     fontSize: androidx.compose.ui.unit.TextUnit = 13.sp,
+    contentPadding: Dp = 8.dp,
     readOnly: Boolean = false,
     autofocus: Boolean = true,
 ) {
@@ -201,8 +203,9 @@ fun TerminalView(
                 detectTapGestures(onTap = { focusInput() })
             },
     ) {
-        val widthPx = with(density) { maxWidth.toPx() }
-        val heightPx = with(density) { maxHeight.toPx() }
+        val insetPx = with(density) { contentPadding.toPx() } * 2
+        val widthPx = (with(density) { maxWidth.toPx() } - insetPx).coerceAtLeast(0f)
+        val heightPx = (with(density) { maxHeight.toPx() } - insetPx).coerceAtLeast(0f)
         val cols = max(2, floor(widthPx / cellWidth).toInt())
         val rows = max(2, floor(heightPx / cellHeight).toInt())
 
@@ -221,7 +224,7 @@ fun TerminalView(
 
         val revision = terminal.revision
 
-        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize().padding(contentPadding)) {
             @Suppress("UNUSED_EXPRESSION")
             revision
             terminal.snapshot(scrollOffsetRows) { lines, cursorRow ->
