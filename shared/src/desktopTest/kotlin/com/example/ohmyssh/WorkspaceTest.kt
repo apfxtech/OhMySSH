@@ -84,6 +84,31 @@ class WorkspaceTest {
     }
 
     @Test
+    fun reachingAnotherGroupSwitchesTheWholeLayout() {
+        Workspace.show(shellA)
+        Workspace.showBeside(shellB)
+
+        val shellC = paneKey("c", PaneKind.SHELL)
+        val filesC = paneKey("c", PaneKind.FILES)
+        Workspace.showGroup(listOf(shellC, filesC), shellC)
+
+        assertEquals(listOf(shellC, filesC), Workspace.slots.toList())
+        assertEquals(shellC, Workspace.focusedKey)
+    }
+
+    @Test
+    fun aGroupSwapsItsOwnWindowWithoutDisturbingTheOther() {
+        Workspace.show(shellA)
+        Workspace.showBeside(shellB)
+        Workspace.focus(0)
+
+        Workspace.replaceSlot(1, paneKey("b", PaneKind.FILES))
+
+        assertEquals(listOf(shellA, paneKey("b", PaneKind.FILES)), Workspace.slots.toList())
+        assertEquals(1, Workspace.focused)
+    }
+
+    @Test
     fun thePickedSystemTakesOverThePickersOwnSlot() {
         Workspace.show(shellA)
         Workspace.showBeside(Workspace.openPicker())

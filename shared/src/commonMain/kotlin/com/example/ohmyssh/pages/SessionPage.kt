@@ -185,7 +185,19 @@ fun SessionPage(initialKey: String) {
     }
     val tabs = groups.flatMap { it.tabs }
 
-    remember(initialKey) { Workspace.show(initialKey) }
+    fun selectKey(key: String) {
+        val group = groups.firstOrNull { group -> group.tabs.any { it.key == key } } ?: return
+        val slotOfGroup = Workspace.slots.indexOfFirst { slot ->
+            group.tabs.any { it.key == slot }
+        }
+        when {
+            Workspace.slots.contains(key) -> Workspace.focusKey(key)
+            slotOfGroup >= 0 -> Workspace.replaceSlot(slotOfGroup, key)
+            else -> Workspace.showGroup(group.tabs.map { it.key }, key)
+        }
+    }
+
+    remember(initialKey) { selectKey(initialKey) }
     LaunchedEffect(tabs.map { it.key }) { Workspace.reconcile(tabs.map { it.key }) }
 
     val open = Workspace.slots.mapNotNull { key -> tabs.firstOrNull { it.key == key } }
@@ -350,7 +362,7 @@ fun SessionPage(initialKey: String) {
                     groups = groups,
                     visible = Workspace.slots.toList(),
                     focusedKey = active.key,
-                    onSelect = { tab -> Workspace.show(tab.key) },
+                    onSelect = { tab -> selectKey(tab.key) },
                     onSplit = { tab -> Workspace.showBeside(tab.key) },
                     onClose = ::closeTab,
                 )

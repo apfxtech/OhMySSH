@@ -35,6 +35,28 @@ object Workspace {
         if (index in slots.indices) focused = index
     }
 
+    fun focusKey(key: String) {
+        val index = slots.indexOf(key)
+        if (index >= 0) focused = index
+    }
+
+    fun replaceSlot(index: Int, key: String) {
+        if (index !in slots.indices) {
+            show(key)
+            return
+        }
+        slots[index] = key
+        focused = index
+    }
+
+    fun showGroup(keys: List<String>, focus: String) {
+        val visible = keys.take(MAX_SLOTS)
+        if (visible.isEmpty()) return
+        slots.clear()
+        slots.addAll(visible)
+        focused = visible.indexOf(focus).coerceAtLeast(0)
+    }
+
     fun show(key: String) {
         val existing = slots.indexOf(key)
         if (existing >= 0) {
