@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -41,6 +42,7 @@ fun GroupedCard(
     onTap: (() -> Unit)? = null,
     padding: PaddingValues = kGroupedCardPadding,
     background: (@Composable () -> Unit)? = null,
+    contentAlignment: Alignment = Alignment.CenterStart,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -52,7 +54,12 @@ fun GroupedCard(
             .let { if (onTap != null) it.clickable(onClick = onTap) else it },
     ) {
         background?.invoke()
-        Box(Modifier.padding(padding)) { content() }
+        Box(
+            Modifier.fillMaxSize().padding(padding),
+            contentAlignment = contentAlignment,
+        ) {
+            content()
+        }
     }
 }
 
@@ -166,6 +173,11 @@ fun <T> GroupedCardGrid(
                                         onTap = onTap?.invoke(items[index]),
                                         padding = cardPadding,
                                         background = backgroundBuilder?.invoke(items[index]),
+                                        contentAlignment = if (mainAxisExtent == null) {
+                                            Alignment.TopStart
+                                        } else {
+                                            Alignment.CenterStart
+                                        },
                                         modifier = cellModifier,
                                     ) {
                                         itemBuilder(items[index])
