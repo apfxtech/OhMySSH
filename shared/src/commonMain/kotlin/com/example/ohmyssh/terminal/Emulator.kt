@@ -63,6 +63,9 @@ class TerminalEmulator(
     val viewWidth: Int get() = cols
     val viewHeight: Int get() = rows
 
+    var isMeasured: Boolean = false
+        private set
+
     val scrollbackSize: Int get() = lock.withLock { scrollback.size }
 
     private val grid: MutableList<TermLine> get() = if (usingAlt) alt else main
@@ -491,8 +494,9 @@ class TerminalEmulator(
     }
 
     fun resize(newCols: Int, newRows: Int) {
-        if (newCols == cols && newRows == rows) return
         if (newCols < 2 || newRows < 2) return
+        isMeasured = true
+        if (newCols == cols && newRows == rows) return
         lock.withLock {
             for (line in scrollback) line.resize(newCols)
             for (screen in listOf(main, alt)) {

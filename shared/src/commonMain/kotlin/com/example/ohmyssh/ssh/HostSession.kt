@@ -18,8 +18,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 enum class ConnectStage(val label: String) {
     CREDENTIALS("Loading credentials"),
@@ -203,6 +205,13 @@ class HostSession(
     private suspend fun openShell() {
         mark(ConnectStage.SHELL, StageStatus.RUNNING)
         val active = connection ?: throw SessionError("Not connected")
+
+        // The PTY size is fixed at allocation, so a shell opened before the
+        // view has measured would make the remote wrap its first output — the
+        // login banner especially — to a width the screen does not have.
+        withTimeoutOrNull(1000) {
+            while (!terminal.isMeasured) delay(16)
+        }
 
         val opened = active.openShell(
             cols = terminal.viewWidth,

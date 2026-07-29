@@ -206,7 +206,11 @@ fun TerminalView(
         val cols = max(2, floor(widthPx / cellWidth).toInt())
         val rows = max(2, floor(heightPx / cellHeight).toInt())
 
-        LaunchedEffect(cols, rows) {
+        // A degenerate box (a tab that is laid out at zero size) would otherwise
+        // shrink the emulator to 2x2 and throw the session's screen away.
+        val measured = widthPx >= cellWidth * 2 && heightPx >= cellHeight * 2
+        LaunchedEffect(cols, rows, measured) {
+            if (!measured) return@LaunchedEffect
             terminal.resize(cols, rows)
             terminal.onResize?.invoke(cols, rows, widthPx.roundToInt(), heightPx.roundToInt())
         }

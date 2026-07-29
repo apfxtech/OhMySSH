@@ -224,16 +224,21 @@ private fun TabBody(tab: SessionTab) {
     val session = tab.session
     val scope = rememberCoroutineScope()
 
-    if (session.state == SessionState.CONNECTING ||
+    val connecting = session.state == SessionState.CONNECTING ||
         session.state == SessionState.FAILED ||
         session.state == SessionState.IDLE
-    ) {
-        ConnectView(session = session) { scope.launch { session.connect() } }
+
+    if (tab.mode == TabMode.SFTP) {
+        if (connecting) {
+            ConnectView(session = session) { scope.launch { session.connect() } }
+        } else if (session is HostSession) {
+            SftpView(session)
+        }
         return
     }
 
-    when {
-        tab.mode == TabMode.TERMINAL -> TerminalView(
+    Box(Modifier.fillMaxSize()) {
+        TerminalView(
             terminal = session.terminal,
             palette = terminalPalette(
                 isDark = colors.isDark,
@@ -244,8 +249,13 @@ private fun TabBody(tab: SessionTab) {
             ),
             modifier = Modifier.fillMaxSize(),
             readOnly = !session.isConnected,
+            autofocus = session.isConnected,
         )
-        session is HostSession -> SftpView(session)
+        if (connecting) {
+            Box(Modifier.fillMaxSize().background(colors.background)) {
+                ConnectView(session = session) { scope.launch { session.connect() } }
+            }
+        }
     }
 }
 
