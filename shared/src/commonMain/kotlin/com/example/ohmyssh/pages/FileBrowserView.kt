@@ -372,15 +372,17 @@ fun FileBrowserView(browser: FileBrowserState, windowId: String) {
                 Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                FloatingAction(
-                    icon = Icons.Filled.Computer,
-                    background = colors.card,
-                    foreground = colors.textSecondary,
-                    enabled = true,
-                ) {
-                    Workspace.addWindow(PaneRef.Local)
+                if (Workspace.windows.none { it.ref is PaneRef.Local }) {
+                    FloatingAction(
+                        icon = Icons.Filled.Computer,
+                        background = colors.card,
+                        foreground = colors.textSecondary,
+                        enabled = true,
+                    ) {
+                        Workspace.addWindow(PaneRef.Local)
+                    }
+                    Spacer(Modifier.height(10.dp))
                 }
-                Spacer(Modifier.height(10.dp))
                 FloatingAction(
                     icon = Icons.Outlined.CreateNewFolder,
                     background = colors.card,

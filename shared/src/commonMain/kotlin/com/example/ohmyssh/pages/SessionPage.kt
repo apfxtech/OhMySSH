@@ -1,6 +1,6 @@
 package com.example.ohmyssh.pages
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -246,14 +246,16 @@ fun SessionPage(groupId: String) {
         ) {
             Column(Modifier.fillMaxSize()) {
                 Spacer(Modifier.height(8.dp))
-                TabStrip(
-                    groups = groups,
-                    activeGroupId = Workspace.activeGroupId,
-                    focusedWindowId = focused.id,
-                    onSelect = { window -> Workspace.focusWindow(window.id) },
-                    onClose = ::closeWindow,
-                )
-                Spacer(Modifier.height(8.dp))
+                if (groups.sumOf { it.windows.size } > 1) {
+                    TabStrip(
+                        groups = groups,
+                        activeGroupId = Workspace.activeGroupId,
+                        focusedWindowId = focused.id,
+                        onSelect = { window -> Workspace.focusWindow(window.id) },
+                        onClose = ::closeWindow,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
                 WindowArea(windows = windows, focusedId = focused.id)
             }
         }
@@ -263,7 +265,12 @@ fun SessionPage(groupId: String) {
 
 @Composable
 private fun ColumnScope.WindowArea(windows: List<PaneWindow>, focusedId: String) {
-    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+    BoxWithConstraints(
+        Modifier
+            .weight(1f)
+            .fillMaxWidth()
+            .padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+    ) {
         if (windows.size < 2) {
             windows.firstOrNull()?.let { window ->
                 WindowHost(window, focused = true, split = false)
@@ -297,14 +304,14 @@ private fun ColumnScope.WindowArea(windows: List<PaneWindow>, focusedId: String)
 private fun WindowHost(window: PaneWindow, focused: Boolean, split: Boolean) {
     val colors = appColors
     val dropping = PaneDrag.hovered == window.id
-    val highlight by animateFloatAsState(
+    val frame by animateColorAsState(
         targetValue = when {
-            dropping -> 1f
-            focused && split -> 0.55f
-            else -> 0f
+            dropping -> colors.accent
+            focused && split -> colors.accent.copy(alpha = 0.75f)
+            else -> colors.divider
         },
         animationSpec = tween(180),
-        label = "windowHighlight",
+        label = "windowFrame",
     )
     val takesFiles = window.ref is PaneRef.Files || window.ref is PaneRef.Local
 
@@ -312,18 +319,11 @@ private fun WindowHost(window: PaneWindow, focused: Boolean, split: Boolean) {
         Modifier
             .fillMaxSize()
             .then(if (takesFiles) Modifier.paneDropTarget(window.id) else Modifier)
-            .then(
-                if (split || dropping) {
-                    Modifier
-                        .clip(RoundedCornerShape(kGroupedInnerRadius))
-                        .border(
-                            width = if (dropping) 2.dp else 1.dp,
-                            color = colors.accent.copy(alpha = highlight),
-                            shape = RoundedCornerShape(kGroupedInnerRadius),
-                        )
-                } else {
-                    Modifier
-                },
+            .clip(RoundedCornerShape(kGroupedInnerRadius))
+            .border(
+                width = if (dropping) 2.dp else 1.dp,
+                color = frame,
+                shape = RoundedCornerShape(kGroupedInnerRadius),
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
