@@ -5,6 +5,7 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSData
+import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
@@ -65,4 +66,13 @@ actual object AppFiles {
     }
 
     actual val pathSeparator: String = "/"
+
+    actual val userHomeDirectory: String
+        get() {
+            val paths = NSSearchPathForDirectoriesInDomains(
+                NSDocumentDirectory, NSUserDomainMask, true,
+            )
+            return paths.firstOrNull() as? String
+                ?: NSFileManager.defaultManager.currentDirectoryPath
+        }
 }

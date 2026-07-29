@@ -47,4 +47,7 @@ actual object AppFiles {
     }
 
     actual val pathSeparator: String = File.separator
+
+    actual val userHomeDirectory: String
+        get() = System.getProperty("user.home") ?: File.separator
 }

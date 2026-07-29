@@ -30,4 +30,7 @@ actual object AppFiles {
     }
 
     actual val pathSeparator: String = File.separator
+
+    actual val userHomeDirectory: String
+        get() = AndroidApp.context.filesDir.absolutePath
 }

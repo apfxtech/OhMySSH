@@ -13,6 +13,8 @@ expect object AppFiles {
     fun delete(path: String)
 
     val pathSeparator: String
+
+    val userHomeDirectory: String
 }
 
 fun AppFiles.readText(path: String): String = readBytes(path).decodeToString()
