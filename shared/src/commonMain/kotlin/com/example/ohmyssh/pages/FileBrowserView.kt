@@ -54,10 +54,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,14 +68,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardList
 import com.example.ohmyssh.components.QIconBadge
+import com.example.ohmyssh.fs.FileBrowserState
+import com.example.ohmyssh.fs.FileEntry
+import com.example.ohmyssh.fs.FileTransfer
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.platform.FilePick
 import com.example.ohmyssh.platform.appPlatform
 import com.example.ohmyssh.platform.isDesktop
 import com.example.ohmyssh.services.Log
-import com.example.ohmyssh.ssh.HostSession
-import com.example.ohmyssh.ssh.SftpChannel
-import com.example.ohmyssh.ssh.SftpEntry
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.widgets.QEmptyView
@@ -85,74 +83,21 @@ import com.example.ohmyssh.widgets.confirmDestructive
 import com.example.ohmyssh.widgets.promptForText
 import kotlinx.coroutines.launch
 
-private class Transfer(
-    val name: String,
-    val total: Long,
-    val done: Long,
-    val isDownload: Boolean,
-) {
-    val ratio: Float? get() = if (total <= 0) null else (done.toFloat() / total).coerceIn(0f, 1f)
-}
-
 @Composable
-fun SftpView(session: HostSession) {
+fun FileBrowserView(browser: FileBrowserState) {
     val colors = appColors
     val navigator = LocalNavigator.current
-    val scope = rememberCoroutineScope()
+    // The browser's own scope, not the composition's: a transfer has to
+    // survive the user flipping to another tab.
+    val scope = browser.scope
 
-    var sftp by remember(session.id) { mutableStateOf<SftpChannel?>(null) }
-    var path by remember(session.id) { mutableStateOf(".") }
-    var folders by remember(session.id) { mutableStateOf<List<SftpEntry>>(emptyList()) }
-    var files by remember(session.id) { mutableStateOf<List<SftpEntry>>(emptyList()) }
-    var loading by remember(session.id) { mutableStateOf(true) }
-    var error by remember(session.id) { mutableStateOf<String?>(null) }
-    var transfer by remember(session.id) { mutableStateOf<Transfer?>(null) }
+    LaunchedEffect(browser) { browser.start() }
 
-    val selected = remember(session.id) { mutableStateListOf<String>() }
-    var selectionMode by remember(session.id) { mutableStateOf(false) }
-
-    suspend fun listDir(target: String) {
-        val channel = sftp ?: return
-        loading = true
-        error = null
-        selected.clear()
-        selectionMode = false
-        try {
-            val names = channel.list(target).filter { it.name != "." && it.name != ".." }
-            folders = names.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
-            files = names.filterNot { it.isDirectory }.sortedBy { it.name.lowercase() }
-            path = target
-            loading = false
-        } catch (failure: Exception) {
-            Log.error("sftp", "listdir $target failed: $failure", failure)
-            loading = false
-            error = "$failure"
-        }
-    }
-
-    LaunchedEffect(session.id) {
-        try {
-            val channel = session.sftp()
-            sftp = channel
-            listDir(channel.absolute("."))
-        } catch (failure: Exception) {
-            Log.error("sftp", "could not open SFTP channel: $failure", failure)
-            loading = false
-            error = "$failure"
-        }
-    }
-
-    fun join(base: String, name: String): String =
-        if (base.endsWith("/")) "$base$name" else "$base/$name"
-
-    fun selectedEntries(): List<SftpEntry> =
-        (folders + files).filter { selected.contains(it.name) }
-
-    suspend fun downloadOne(entry: SftpEntry, directory: String?) {
-        val channel = sftp ?: return
-        transfer = Transfer(entry.name, entry.size ?: 0, 0, true)
-        val bytes = channel.readBytes(join(path, entry.name)) { done ->
-            transfer = Transfer(entry.name, entry.size ?: 0, done, true)
+    suspend fun downloadOne(entry: FileEntry) {
+        val total = entry.size ?: 0
+        browser.transfer = FileTransfer("Downloading", entry.name, total, 0)
+        val bytes = browser.source.read(browser.join(entry.name)) { done ->
+            browser.transfer = FileTransfer("Downloading", entry.name, total, done)
         }
         FilePick.saveFile(
             name = entry.name.substringBeforeLast('.', entry.name),
@@ -162,125 +107,176 @@ fun SftpView(session: HostSession) {
     }
 
     suspend fun upload() {
-        val channel = sftp ?: return
-        val picked = FilePick.pickFiles("Upload to $path")
+        val picked = FilePick.pickFiles("Upload to ${browser.path}")
         if (picked.isEmpty()) return
 
         for (file in picked) {
-            transfer = Transfer(file.name, file.bytes.size.toLong(), 0, false)
+            val total = file.bytes.size.toLong()
+            browser.transfer = FileTransfer("Uploading", file.name, total, 0)
             try {
-                channel.writeBytes(join(path, file.name), file.bytes) { done ->
-                    transfer = Transfer(file.name, file.bytes.size.toLong(), done, false)
+                browser.source.write(browser.join(file.name), file.bytes) { done ->
+                    browser.transfer = FileTransfer("Uploading", file.name, total, done)
                 }
             } catch (failure: Exception) {
-                Log.error("sftp", "Upload failed: $failure", failure)
+                Log.error("files", "Upload failed: $failure", failure)
                 AppToasts.show("Upload failed: $failure")
                 break
             }
         }
-        transfer = null
-        listDir(path)
+        browser.transfer = null
+        browser.refresh()
     }
 
-    suspend fun delete(entries: List<SftpEntry>) {
-        val channel = sftp ?: return
+    suspend fun delete(entries: List<FileEntry>) {
         for (entry in entries) {
             try {
-                val target = join(path, entry.name)
-                if (entry.isDirectory) channel.rmdir(target) else channel.remove(target)
+                val target = browser.join(entry.name)
+                if (entry.isDirectory) {
+                    browser.source.rmdir(target)
+                } else {
+                    browser.source.remove(target)
+                }
             } catch (failure: Exception) {
-                Log.error("sftp", "${entry.name}: $failure", failure)
+                Log.error("files", "${entry.name}: $failure", failure)
                 AppToasts.show("${entry.name}: $failure")
                 break
             }
         }
-        listDir(path)
+        browser.refresh()
     }
 
-    fun openEntry(entry: SftpEntry) {
-        if (selectionMode) {
-            if (!selected.remove(entry.name)) selected.add(entry.name)
-            selectionMode = selected.isNotEmpty()
+    fun openEntry(entry: FileEntry) {
+        if (browser.selectionMode) {
+            browser.toggle(entry)
             return
         }
         if (entry.isDirectory) {
-            scope.launch { listDir(join(path, entry.name)) }
+            scope.launch { browser.listDir(browser.join(entry.name)) }
             return
         }
-        val channel = sftp ?: return
         if (isProbablyText(entry)) {
             navigator.push {
-                RemoteFileEditor(
-                    sftp = channel,
-                    path = join(path, entry.name),
+                FileEditorPage(
+                    source = browser.source,
+                    path = browser.join(entry.name),
                     name = entry.name,
                 )
             }
         } else {
             scope.launch {
                 try {
-                    downloadOne(entry, null)
+                    downloadOne(entry)
                     AppToasts.show("Downloaded ${entry.name}")
                 } catch (failure: Exception) {
-                    Log.error("sftp", "Download failed: $failure", failure)
+                    Log.error("files", "Download failed: $failure", failure)
                     AppToasts.show("Download failed: $failure")
                 } finally {
-                    transfer = null
+                    browser.transfer = null
                 }
             }
         }
     }
 
+    fun runAction(action: EntryAction, entry: FileEntry) {
+        when (action) {
+            EntryAction.EDIT -> navigator.push {
+                FileEditorPage(
+                    source = browser.source,
+                    path = browser.join(entry.name),
+                    name = entry.name,
+                )
+            }
+            EntryAction.DOWNLOAD -> scope.launch {
+                try {
+                    downloadOne(entry)
+                    AppToasts.show("Downloaded ${entry.name}")
+                } catch (failure: Exception) {
+                    AppToasts.show("Download failed: $failure")
+                } finally {
+                    browser.transfer = null
+                }
+            }
+            EntryAction.RENAME -> scope.launch {
+                val name = promptForText(
+                    title = "Rename",
+                    label = "New name",
+                    initial = entry.name,
+                    actionLabel = "Rename",
+                )
+                if (name.isNullOrEmpty() || name == entry.name) return@launch
+                try {
+                    browser.source.rename(browser.join(entry.name), browser.join(name))
+                    browser.refresh()
+                } catch (failure: Exception) {
+                    AppToasts.show("Rename failed: $failure")
+                }
+            }
+            EntryAction.DELETE -> scope.launch {
+                val confirmed = confirmDestructive(
+                    title = if (entry.isDirectory) "Delete directory?" else "Delete file?",
+                    message = "${browser.join(entry.name)} will be removed ${browser.whereLabel}. " +
+                        "This cannot be undone.",
+                )
+                if (!confirmed) return@launch
+                try {
+                    val target = browser.join(entry.name)
+                    if (entry.isDirectory) {
+                        browser.source.rmdir(target)
+                    } else {
+                        browser.source.remove(target)
+                    }
+                    browser.refresh()
+                } catch (failure: Exception) {
+                    AppToasts.show("Delete failed: $failure")
+                }
+            }
+            EntryAction.SELECT -> browser.select(entry)
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            if (selectionMode) {
+            if (browser.selectionMode) {
                 SelectionBar(
-                    count = selected.size,
-                    onCancel = {
-                        selectionMode = false
-                        selected.clear()
-                    },
+                    count = browser.selected.size,
+                    onCancel = { browser.clearSelection() },
                     onSelectAll = {
-                        val all = (folders + files).map { it.name }
-                        if (selected.size == all.size) {
-                            selected.clear()
-                            selectionMode = false
+                        val all = browser.entries.map { it.name }
+                        if (browser.selected.size == all.size) {
+                            browser.clearSelection()
                         } else {
-                            selected.clear()
-                            selected.addAll(all)
-                            selectionMode = true
+                            browser.selected.clear()
+                            browser.selected.addAll(all)
+                            browser.selectionMode = true
                         }
                     },
                     onDownload = {
                         scope.launch {
-                            val entries = selectedEntries().filterNot { it.isDirectory }
-                            val skipped = selected.size - entries.size
+                            val entries = browser.selectedEntries().filterNot { it.isDirectory }
+                            val skipped = browser.selected.size - entries.size
                             if (entries.isEmpty()) {
                                 AppToasts.show("Select at least one file")
                                 return@launch
                             }
-                            val directory = if (appPlatform.isDesktop) {
+                            if (appPlatform.isDesktop) {
                                 FilePick.pickDirectory(
                                     "Download ${entries.size} file" +
                                         "${if (entries.size == 1) "" else "s"} to…",
                                 )
-                            } else {
-                                null
                             }
                             var done = 0
                             for (entry in entries) {
                                 try {
-                                    downloadOne(entry, directory)
+                                    downloadOne(entry)
                                     done++
                                 } catch (failure: Exception) {
-                                    Log.error("sftp", "${entry.name}: $failure", failure)
+                                    Log.error("files", "${entry.name}: $failure", failure)
                                     AppToasts.show("${entry.name}: $failure")
                                     break
                                 }
                             }
-                            transfer = null
-                            selectionMode = false
-                            selected.clear()
+                            browser.transfer = null
+                            browser.clearSelection()
                             AppToasts.show(
                                 "Downloaded $done file${if (done == 1) "" else "s"}" +
                                     if (skipped > 0) {
@@ -293,12 +289,12 @@ fun SftpView(session: HostSession) {
                     },
                     onDelete = {
                         scope.launch {
-                            val entries = selectedEntries()
+                            val entries = browser.selectedEntries()
                             if (entries.isEmpty()) return@launch
                             val confirmed = confirmDestructive(
                                 title = "Delete ${entries.size} item" +
                                     "${if (entries.size == 1) "" else "s"}?",
-                                message = "They will be removed on the remote system. " +
+                                message = "They will be removed ${browser.whereLabel}. " +
                                     "This cannot be undone.",
                             )
                             if (confirmed) delete(entries)
@@ -306,22 +302,28 @@ fun SftpView(session: HostSession) {
                     },
                 )
             } else {
-                Breadcrumbs(path) { target -> scope.launch { listDir(target) } }
+                Breadcrumbs(
+                    path = browser.path,
+                    separator = browser.source.separator,
+                ) { target -> scope.launch { browser.listDir(target) } }
             }
 
-            transfer?.let { TransferBar(it) }
+            browser.transfer?.let { TransferBar(it) }
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    browser.loading -> Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         CircularProgressIndicator(color = colors.accent)
                     }
-                    error != null -> QEmptyView(
+                    browser.error != null -> QEmptyView(
                         icon = Icons.Outlined.ErrorOutline,
                         title = "Could not read this directory",
-                        message = error!!,
+                        message = browser.error!!,
                     )
-                    folders.isEmpty() && files.isEmpty() -> QEmptyView(
+                    browser.entries.isEmpty() -> QEmptyView(
                         icon = Icons.Filled.FolderOpen,
                         title = "Empty directory",
                         message = "Nothing here yet.",
@@ -332,57 +334,25 @@ fun SftpView(session: HostSession) {
                             .verticalScroll(rememberScrollState())
                             .padding(top = 10.dp, bottom = 170.dp),
                     ) {
-                        if (folders.isNotEmpty()) {
+                        if (browser.folders.isNotEmpty()) {
                             EntrySection(
-                                title = "Folders (${folders.size})",
-                                entries = folders,
-                                selected = selected,
-                                selectionMode = selectionMode,
+                                title = "Folders (${browser.folders.size})",
+                                entries = browser.folders,
+                                browser = browser,
                                 onOpen = ::openEntry,
-                                onEnterSelection = { entry ->
-                                    selectionMode = true
-                                    selected.clear()
-                                    selected.add(entry.name)
-                                },
-                                onAction = { action, entry ->
-                                    runEntryAction(
-                                        action, entry, scope, sftp, path, navigator,
-                                        ::join, ::downloadOne, ::listDir,
-                                        onSelect = {
-                                            selectionMode = true
-                                            selected.clear()
-                                            selected.add(entry.name)
-                                        },
-                                        onTransferDone = { transfer = null },
-                                    )
-                                },
+                                onAction = ::runAction,
                             )
                         }
-                        if (folders.isNotEmpty() && files.isNotEmpty()) Spacer(Modifier.height(14.dp))
-                        if (files.isNotEmpty()) {
+                        if (browser.folders.isNotEmpty() && browser.files.isNotEmpty()) {
+                            Spacer(Modifier.height(14.dp))
+                        }
+                        if (browser.files.isNotEmpty()) {
                             EntrySection(
-                                title = "Files (${files.size})",
-                                entries = files,
-                                selected = selected,
-                                selectionMode = selectionMode,
+                                title = "Files (${browser.files.size})",
+                                entries = browser.files,
+                                browser = browser,
                                 onOpen = ::openEntry,
-                                onEnterSelection = { entry ->
-                                    selectionMode = true
-                                    selected.clear()
-                                    selected.add(entry.name)
-                                },
-                                onAction = { action, entry ->
-                                    runEntryAction(
-                                        action, entry, scope, sftp, path, navigator,
-                                        ::join, ::downloadOne, ::listDir,
-                                        onSelect = {
-                                            selectionMode = true
-                                            selected.clear()
-                                            selected.add(entry.name)
-                                        },
-                                        onTransferDone = { transfer = null },
-                                    )
-                                },
+                                onAction = ::runAction,
                             )
                         }
                     }
@@ -390,7 +360,7 @@ fun SftpView(session: HostSession) {
             }
         }
 
-        if (!selectionMode) {
+        if (!browser.selectionMode) {
             Column(
                 Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -399,10 +369,9 @@ fun SftpView(session: HostSession) {
                     icon = Icons.Outlined.CreateNewFolder,
                     background = colors.card,
                     foreground = colors.textSecondary,
-                    enabled = sftp != null,
+                    enabled = !browser.loading,
                 ) {
                     scope.launch {
-                        val channel = sftp ?: return@launch
                         val name = promptForText(
                             title = "New directory",
                             label = "Name",
@@ -410,8 +379,8 @@ fun SftpView(session: HostSession) {
                         )
                         if (name.isNullOrEmpty()) return@launch
                         try {
-                            channel.mkdir(join(path, name))
-                            listDir(path)
+                            browser.source.mkdir(browser.join(name))
+                            browser.refresh()
                         } catch (failure: Exception) {
                             AppToasts.show("Could not create: $failure")
                         }
@@ -423,110 +392,49 @@ fun SftpView(session: HostSession) {
                     background = colors.card,
                     foreground = colors.textSecondary,
                     enabled = true,
-                ) { scope.launch { listDir(path) } }
+                ) { scope.launch { browser.refresh() } }
                 Spacer(Modifier.height(10.dp))
                 FloatingAction(
                     icon = Icons.Filled.Upload,
                     background = colors.accent,
                     foreground = colors.onAccent,
-                    enabled = sftp != null,
+                    enabled = !browser.loading,
                 ) { scope.launch { upload() } }
             }
         }
     }
 }
 
-private enum class EntryAction { EDIT, DOWNLOAD, RENAME, DELETE, SELECT }
+private val FileBrowserState.whereLabel: String
+    get() = if (source.isLocal) "on this device" else "on the remote system"
 
-private fun runEntryAction(
-    action: EntryAction,
-    entry: SftpEntry,
-    scope: kotlinx.coroutines.CoroutineScope,
-    sftp: SftpChannel?,
-    path: String,
-    navigator: com.example.ohmyssh.navigation.Navigator,
-    join: (String, String) -> String,
-    downloadOne: suspend (SftpEntry, String?) -> Unit,
-    listDir: suspend (String) -> Unit,
-    onSelect: () -> Unit,
-    onTransferDone: () -> Unit,
-) {
-    val channel = sftp ?: return
-    when (action) {
-        EntryAction.EDIT -> navigator.push {
-            RemoteFileEditor(sftp = channel, path = join(path, entry.name), name = entry.name)
-        }
-        EntryAction.DOWNLOAD -> scope.launch {
-            try {
-                downloadOne(entry, null)
-                AppToasts.show("Downloaded ${entry.name}")
-            } catch (failure: Exception) {
-                AppToasts.show("Download failed: $failure")
-            } finally {
-                onTransferDone()
-            }
-        }
-        EntryAction.RENAME -> scope.launch {
-            val name = promptForText(
-                title = "Rename",
-                label = "New name",
-                initial = entry.name,
-                actionLabel = "Rename",
-            )
-            if (name.isNullOrEmpty() || name == entry.name) return@launch
-            try {
-                channel.rename(join(path, entry.name), join(path, name))
-                listDir(path)
-            } catch (failure: Exception) {
-                AppToasts.show("Rename failed: $failure")
-            }
-        }
-        EntryAction.DELETE -> scope.launch {
-            val confirmed = confirmDestructive(
-                title = if (entry.isDirectory) "Delete directory?" else "Delete file?",
-                message = "${join(path, entry.name)} will be removed on the remote system. " +
-                    "This cannot be undone.",
-            )
-            if (!confirmed) return@launch
-            try {
-                val target = join(path, entry.name)
-                if (entry.isDirectory) channel.rmdir(target) else channel.remove(target)
-                listDir(path)
-            } catch (failure: Exception) {
-                AppToasts.show("Delete failed: $failure")
-            }
-        }
-        EntryAction.SELECT -> onSelect()
-    }
-}
+internal enum class EntryAction { EDIT, DOWNLOAD, RENAME, DELETE, SELECT }
 
 @Composable
 private fun EntrySection(
     title: String,
-    entries: List<SftpEntry>,
-    selected: List<String>,
-    selectionMode: Boolean,
-    onOpen: (SftpEntry) -> Unit,
-    onEnterSelection: (SftpEntry) -> Unit,
-    onAction: (EntryAction, SftpEntry) -> Unit,
+    entries: List<FileEntry>,
+    browser: FileBrowserState,
+    onOpen: (FileEntry) -> Unit,
+    onAction: (EntryAction, FileEntry) -> Unit,
 ) {
     GroupedCardList(
         title = title,
         items = entries,
         onTap = { entry -> { onOpen(entry) } },
-        onLongPress = { entry -> { onEnterSelection(entry) } },
+        onLongPress = { entry -> { browser.select(entry) } },
         itemBuilder = { entry ->
             EntryRow(
                 entry = entry,
-                selected = selected.contains(entry.name),
-                selectionMode = selectionMode,
+                selected = browser.selected.contains(entry.name),
+                selectionMode = browser.selectionMode,
                 onAction = { action -> onAction(action, entry) },
             )
         },
     )
 }
 
-internal fun isProbablyText(entry: SftpEntry): Boolean {
+internal fun isProbablyText(entry: FileEntry): Boolean {
     val size = entry.size ?: 0
     if (size > kMaxEditableBytes) return false
     val name = entry.name
@@ -542,9 +450,10 @@ internal fun isProbablyText(entry: SftpEntry): Boolean {
 }
 
 @Composable
-private fun Breadcrumbs(path: String, onNavigate: (String) -> Unit) {
+private fun Breadcrumbs(path: String, separator: String, onNavigate: (String) -> Unit) {
     val colors = appColors
-    val segments = path.split('/').filter { it.isNotEmpty() }
+    val root = if (separator == "/") "/" else path.substringBefore(separator) + separator
+    val segments = path.removePrefix(root).split(separator).filter { it.isNotEmpty() }
     val scroll = rememberScrollState()
 
     LaunchedEffect(path) { scroll.animateScrollTo(scroll.maxValue) }
@@ -560,7 +469,7 @@ private fun Breadcrumbs(path: String, onNavigate: (String) -> Unit) {
         Box(
             Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(enabled = segments.isNotEmpty()) { onNavigate("/") }
+                .clickable(enabled = segments.isNotEmpty()) { onNavigate(root) }
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         ) {
             Icon(
@@ -571,9 +480,9 @@ private fun Breadcrumbs(path: String, onNavigate: (String) -> Unit) {
             )
         }
 
-        var cumulative = ""
+        var cumulative = root.removeSuffix(separator)
         for ((index, segment) in segments.withIndex()) {
-            cumulative += "/$segment"
+            cumulative += "$separator$segment"
             val isLast = index == segments.size - 1
             val target = cumulative
             Icon(
@@ -681,7 +590,7 @@ private fun FloatingAction(
 }
 
 @Composable
-private fun TransferBar(transfer: Transfer) {
+private fun TransferBar(transfer: FileTransfer) {
     val colors = appColors
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -692,8 +601,7 @@ private fun TransferBar(transfer: Transfer) {
             )
             Spacer(Modifier.width(10.dp))
             Text(
-                "${if (transfer.isDownload) "Downloading" else "Uploading"} " +
-                    "${transfer.name}  ${formatBytes(transfer.done)}" +
+                "${transfer.verb} ${transfer.name}  ${formatBytes(transfer.done)}" +
                     if (transfer.total > 0) " / ${formatBytes(transfer.total)}" else "",
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -721,7 +629,7 @@ private fun TransferBar(transfer: Transfer) {
 
 @Composable
 private fun EntryRow(
-    entry: SftpEntry,
+    entry: FileEntry,
     selected: Boolean,
     selectionMode: Boolean,
     onAction: (EntryAction) -> Unit,

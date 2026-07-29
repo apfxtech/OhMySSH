@@ -39,6 +39,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardGrid
+import com.example.ohmyssh.fs.FileBrowsers
+import com.example.ohmyssh.fs.SftpSource
 import com.example.ohmyssh.components.QPageAppBar
 import com.example.ohmyssh.components.QPageAppBarAction
 import com.example.ohmyssh.components.QScaffold
@@ -232,7 +234,8 @@ private fun TabBody(tab: SessionTab) {
         if (connecting) {
             ConnectView(session = session) { scope.launch { session.connect() } }
         } else if (session is HostSession) {
-            SftpView(session)
+            val browser = FileBrowsers.of("${session.id}:files") { SftpSource(session) }
+            FileBrowserView(browser)
         }
         return
     }

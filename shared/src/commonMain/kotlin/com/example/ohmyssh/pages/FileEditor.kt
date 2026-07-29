@@ -43,7 +43,7 @@ import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.navigation.PlatformBackHandler
 import com.example.ohmyssh.services.Log
-import com.example.ohmyssh.ssh.SftpChannel
+import com.example.ohmyssh.fs.FileSource
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.widgets.QEmptyView
@@ -109,7 +109,7 @@ fun computeModifiedLines(saved: List<String>, current: List<String>): Set<Int> {
 }
 
 @Composable
-fun RemoteFileEditor(sftp: SftpChannel, path: String, name: String) {
+fun FileEditorPage(source: FileSource, path: String, name: String) {
     val colors = appColors
     val navigator = LocalNavigator.current
     val scope = rememberCoroutineScope()
@@ -132,11 +132,11 @@ fun RemoteFileEditor(sftp: SftpChannel, path: String, name: String) {
 
     LaunchedEffect(path) {
         try {
-            val attrs = sftp.stat(path)
+            val attrs = source.stat(path)
             if ((attrs.size ?: 0) > kMaxEditableBytes) {
                 throw IllegalStateException("File is too large to edit here")
             }
-            val bytes = sftp.readBytes(path)
+            val bytes = source.read(path)
             if (bytes.contains(0)) {
                 throw IllegalStateException("This looks like a binary file")
             }
@@ -178,7 +178,7 @@ fun RemoteFileEditor(sftp: SftpChannel, path: String, name: String) {
                 actions = {
                     if (!loading && error == null) {
                         QPageAppBarAction(
-                            tooltip = "Save to server",
+                            tooltip = if (source.isLocal) "Save" else "Save to server",
                             icon = Icons.Outlined.CloudUpload,
                             iconSize = 21.dp,
                             native = true,
@@ -192,7 +192,7 @@ fun RemoteFileEditor(sftp: SftpChannel, path: String, name: String) {
                                             } else {
                                                 text
                                             }
-                                            sftp.writeBytes(path, payload.encodeToByteArray())
+                                            source.write(path, payload.encodeToByteArray())
                                             original = text
                                             savedLines = text.split("\n")
                                             AppToasts.show("Saved $name")
