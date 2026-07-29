@@ -315,7 +315,7 @@ private fun WindowHost(window: PaneWindow, focused: Boolean, split: Boolean) {
     )
     val takesFiles = window.ref is PaneRef.Files || window.ref is PaneRef.Local
 
-    Column(
+    Box(
         Modifier
             .fillMaxSize()
             .then(if (takesFiles) Modifier.paneDropTarget(window.id) else Modifier)
@@ -327,8 +327,7 @@ private fun WindowHost(window: PaneWindow, focused: Boolean, split: Boolean) {
             )
             .focusOnPress(focused) { Workspace.focusWindow(window.id) },
     ) {
-        if (split) WindowCaption(window, focused)
-        Box(Modifier.weight(1f).fillMaxWidth()) { WindowBody(window) }
+        WindowBody(window)
     }
 }
 
@@ -341,39 +340,6 @@ private fun Modifier.focusOnPress(focused: Boolean, onFocus: () -> Unit): Modifi
             }
         }
     }
-
-@Composable
-private fun WindowCaption(window: PaneWindow, focused: Boolean) {
-    val colors = appColors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(24.dp)
-            .background(
-                if (focused) colors.accent.copy(alpha = 0.12f) else colors.card.copy(alpha = 0.6f),
-            )
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            windowIcon(window.ref),
-            contentDescription = null,
-            tint = if (focused) colors.accent else colors.textMuted,
-            modifier = Modifier.size(13.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            "${windowTitle(window.ref)} · ${windowKindLabel(window.ref)}",
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = TextStyle(
-                color = if (focused) colors.textPrimary else colors.textMuted,
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.W600,
-            ),
-        )
-    }
-}
 
 @Composable
 private fun WindowBody(window: PaneWindow) {
