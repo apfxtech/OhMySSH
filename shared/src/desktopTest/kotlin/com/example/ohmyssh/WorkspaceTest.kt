@@ -24,12 +24,12 @@ class WorkspaceTest {
     fun tidy() = Workspace.reset()
 
     @Test
-    fun splittingAddsASecondWindowToThisGroup() {
+    fun aSecondWindowJoinsThisGroupRatherThanOpeningOne() {
         Workspace.openGroup(shellA)
         assertFalse(Workspace.isSplit)
         assertEquals(1, Workspace.groups.size)
 
-        Workspace.split()
+        Workspace.addWindow(PaneRef.Picker)
 
         assertEquals(1, Workspace.groups.size)
         assertEquals(listOf(shellA, PaneRef.Picker), refsOnScreen())
@@ -40,7 +40,7 @@ class WorkspaceTest {
     @Test
     fun whatIsPickedTakesOverThatWindowOnly() {
         Workspace.openGroup(shellA)
-        Workspace.split()
+        Workspace.addWindow(PaneRef.Picker)
         val picker = Workspace.focusedWindow!!
 
         Workspace.resolve(picker.id, shellB)
@@ -52,8 +52,7 @@ class WorkspaceTest {
     @Test
     fun reachingAnotherGroupSwapsBothWindows() {
         Workspace.openGroup(shellA)
-        Workspace.split()
-        Workspace.resolve(Workspace.focusedWindow!!.id, filesA)
+        Workspace.addWindow(filesA)
         val first = Workspace.activeGroup!!
 
         val second = Workspace.openGroup(shellB)
@@ -70,8 +69,7 @@ class WorkspaceTest {
     @Test
     fun focusingAWindowOfTheGroupOnScreenLeavesTheOtherAlone() {
         Workspace.openGroup(shellA)
-        Workspace.split()
-        Workspace.resolve(Workspace.focusedWindow!!.id, filesA)
+        Workspace.addWindow(filesA)
 
         val shellWindow = Workspace.windows.first()
         Workspace.focusWindow(shellWindow.id)
@@ -106,15 +104,15 @@ class WorkspaceTest {
     }
 
     @Test
-    fun unsplitKeepsTheFocusedWindow() {
+    fun closingOneWindowOfAGroupLeavesTheOther() {
         Workspace.openGroup(shellA)
         Workspace.addWindow(filesA)
-        Workspace.focusWindow(Workspace.windows.first().id)
 
-        Workspace.unsplit()
+        Workspace.closeWindow(Workspace.focusedWindow!!.id)
 
         assertEquals(listOf(shellA), refsOnScreen())
         assertFalse(Workspace.isSplit)
+        assertEquals(1, Workspace.groups.size)
     }
 
     @Test

@@ -25,12 +25,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -187,26 +185,6 @@ fun SessionPage(groupId: String) {
                                 onPressed = { scope.launch { session.connect() } },
                             )
                         }
-                        if (session is HostSession && session.isConnected) {
-                            QPageAppBarAction(
-                                tooltip = "Open SFTP",
-                                icon = Icons.Filled.FolderOpen,
-                                native = true,
-                                onPressed = { Workspace.addWindow(PaneRef.Files(session.id)) },
-                            )
-                        }
-                        QPageAppBarAction(
-                            tooltip = if (Workspace.isSplit) "Single window" else "Split group",
-                            icon = if (Workspace.isSplit) {
-                                Icons.Filled.CloseFullscreen
-                            } else {
-                                Icons.Filled.VerticalSplit
-                            },
-                            native = true,
-                            onPressed = {
-                                if (Workspace.isSplit) Workspace.unsplit() else Workspace.split()
-                            },
-                        )
                         QPageAppBarAction(
                             tooltip = "New group",
                             icon = Icons.Filled.Add,
@@ -418,10 +396,14 @@ private fun PickerBody(window: PaneWindow) {
         } else {
             SessionManager.open(host)
         }
-        Workspace.resolve(
-            window.id,
-            if (files) PaneRef.Files(session.id) else PaneRef.Shell(session.id),
-        )
+
+        if (!files) {
+            Workspace.resolve(window.id, PaneRef.Shell(session.id))
+            return
+        }
+
+        Workspace.closeWindow(window.id)
+        Workspace.openGroup(PaneRef.Files(session.id))
     }
 
     ConnectionPicker(

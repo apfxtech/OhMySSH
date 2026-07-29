@@ -113,23 +113,6 @@ object Workspace {
         return window
     }
 
-    fun split() {
-        if (isSplit) return
-        addWindow(PaneRef.Picker)
-    }
-
-    fun unsplit() {
-        val group = activeGroup ?: return
-        if (group.windows.size < 2) return
-        val keep = group.windows.firstOrNull { it.id == focusedWindowId } ?: group.windows.first()
-        for (window in group.windows.toList()) {
-            if (window.id == keep.id) continue
-            retire(window)
-            group.windows.remove(window)
-        }
-        focusedWindowId = keep.id
-    }
-
     fun resolve(windowId: String, ref: PaneRef) {
         val window = windowById(windowId) ?: return
         retire(window)
