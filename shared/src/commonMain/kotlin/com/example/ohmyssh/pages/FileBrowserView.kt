@@ -78,13 +78,15 @@ import com.example.ohmyssh.platform.isDesktop
 import com.example.ohmyssh.services.Log
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
+import com.example.ohmyssh.ui.DragPayload
+import com.example.ohmyssh.ui.paneDragSource
 import com.example.ohmyssh.widgets.QEmptyView
 import com.example.ohmyssh.widgets.confirmDestructive
 import com.example.ohmyssh.widgets.promptForText
 import kotlinx.coroutines.launch
 
 @Composable
-fun FileBrowserView(browser: FileBrowserState) {
+fun FileBrowserView(browser: FileBrowserState, paneKey: String) {
     val colors = appColors
     val navigator = LocalNavigator.current
     // The browser's own scope, not the composition's: a transfer has to
@@ -339,6 +341,7 @@ fun FileBrowserView(browser: FileBrowserState) {
                                 title = "Folders (${browser.folders.size})",
                                 entries = browser.folders,
                                 browser = browser,
+                                paneKey = paneKey,
                                 onOpen = ::openEntry,
                                 onAction = ::runAction,
                             )
@@ -351,6 +354,7 @@ fun FileBrowserView(browser: FileBrowserState) {
                                 title = "Files (${browser.files.size})",
                                 entries = browser.files,
                                 browser = browser,
+                                paneKey = paneKey,
                                 onOpen = ::openEntry,
                                 onAction = ::runAction,
                             )
@@ -415,6 +419,7 @@ private fun EntrySection(
     title: String,
     entries: List<FileEntry>,
     browser: FileBrowserState,
+    paneKey: String,
     onOpen: (FileEntry) -> Unit,
     onAction: (EntryAction, FileEntry) -> Unit,
 ) {
@@ -422,7 +427,19 @@ private fun EntrySection(
         title = title,
         items = entries,
         onTap = { entry -> { onOpen(entry) } },
-        onLongPress = { entry -> { browser.select(entry) } },
+        cardGesture = { entry ->
+            Modifier.paneDragSource(
+                key = "$paneKey/${browser.path}/${entry.name}",
+                payload = {
+                    DragPayload(
+                        sourceKey = paneKey,
+                        browser = browser,
+                        entries = browser.dragPayload(entry),
+                    )
+                },
+                onLongPress = { browser.select(entry) },
+            )
+        },
         itemBuilder = { entry ->
             EntryRow(
                 entry = entry,

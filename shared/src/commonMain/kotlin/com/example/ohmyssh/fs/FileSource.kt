@@ -82,7 +82,8 @@ class SftpSource(private val session: HostSession) : FileSource {
     override suspend fun rename(from: String, to: String) = channel().rename(from, to)
 }
 
-class LocalSource(override val id: String) : FileSource {
+class LocalSource : FileSource {
+    override val id: String = "local"
     override val label: String = "This device"
     override val isLocal: Boolean = true
     override val separator: String = LocalFs.separator

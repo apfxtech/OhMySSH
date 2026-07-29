@@ -48,6 +48,7 @@ fun GroupedCard(
     background: (@Composable () -> Unit)? = null,
     contentAlignment: Alignment = Alignment.CenterStart,
     modifier: Modifier = Modifier,
+    gestureModifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val colors = appColors
@@ -71,7 +72,8 @@ fun GroupedCard(
                     )
                     else -> base
                 }
-            },
+            }
+            .then(gestureModifier),
     ) {
         background?.invoke()
         Box(
@@ -117,6 +119,7 @@ fun <T> GroupedCardList(
     onLongPress: ((T) -> (() -> Unit)?)? = null,
     cardPadding: PaddingValues = kGroupedCardPadding,
     backgroundBuilder: ((T) -> (@Composable () -> Unit)?)? = null,
+    cardGesture: (@Composable (T) -> Modifier)? = null,
     itemBuilder: @Composable (T) -> Unit,
 ) {
     val last = items.size - 1
@@ -135,6 +138,7 @@ fun <T> GroupedCardList(
                 padding = cardPadding,
                 background = backgroundBuilder?.invoke(item),
                 modifier = Modifier.fillMaxWidth(),
+                gestureModifier = cardGesture?.invoke(item) ?: Modifier,
             ) {
                 itemBuilder(item)
             }

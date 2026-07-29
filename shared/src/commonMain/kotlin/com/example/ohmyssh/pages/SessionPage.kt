@@ -41,11 +41,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
@@ -79,6 +84,9 @@ import com.example.ohmyssh.terminal.TerminalView
 import com.example.ohmyssh.terminal.terminalPalette
 import com.example.ohmyssh.theme.QAppColors
 import com.example.ohmyssh.theme.appColors
+import com.example.ohmyssh.ui.PaneDrag
+import com.example.ohmyssh.ui.PaneDragGhost
+import com.example.ohmyssh.ui.paneDropTarget
 import com.example.ohmyssh.widgets.PickOption
 import com.example.ohmyssh.widgets.QEmptyView
 import com.example.ohmyssh.widgets.confirmDestructive
@@ -233,98 +241,107 @@ fun SessionPage(initialKey: String) {
 
     val session = active.session
 
-    QScaffold(
-        appBar = {
-            QPageAppBar(
-                title = active.title,
-                subtitle = session?.subtitle ?: "Local files",
-                statusColor = session?.let { statusColor(colors, it) },
-                actions = {
-                    if (session != null && session.state == SessionState.CLOSED) {
+    var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { rootOrigin = it.positionInWindow() },
+    ) {
+        QScaffold(
+            appBar = {
+                QPageAppBar(
+                    title = active.title,
+                    subtitle = session?.subtitle ?: "Local files",
+                    statusColor = session?.let { statusColor(colors, it) },
+                    actions = {
+                        if (session != null && session.state == SessionState.CLOSED) {
+                            QPageAppBarAction(
+                                tooltip = "Reconnect",
+                                icon = Icons.Filled.Autorenew,
+                                native = true,
+                                onPressed = { scope.launch { session.connect() } },
+                            )
+                        }
+                        if (session is HostSession && session.isConnected && !session.sftpTabOpen) {
+                            QPageAppBarAction(
+                                tooltip = "Open SFTP",
+                                icon = Icons.Filled.FolderOpen,
+                                native = true,
+                                onPressed = {
+                                    session.sftpTabOpen = true
+                                    Workspace.show(paneKey(session.id, PaneKind.FILES))
+                                },
+                            )
+                        }
                         QPageAppBarAction(
-                            tooltip = "Reconnect",
-                            icon = Icons.Filled.Autorenew,
-                            native = true,
-                            onPressed = { scope.launch { session.connect() } },
-                        )
-                    }
-                    if (session is HostSession && session.isConnected && !session.sftpTabOpen) {
-                        QPageAppBarAction(
-                            tooltip = "Open SFTP",
-                            icon = Icons.Filled.FolderOpen,
-                            native = true,
-                            onPressed = {
-                                session.sftpTabOpen = true
-                                Workspace.show(paneKey(session.id, PaneKind.FILES))
-                            },
-                        )
-                    }
-                    QPageAppBarAction(
-                        tooltip = if (Workspace.isSplit) "Single pane" else "Split view",
-                        icon = if (Workspace.isSplit) {
-                            Icons.Filled.CloseFullscreen
-                        } else {
-                            Icons.Filled.VerticalSplit
-                        },
-                        native = true,
-                        onPressed = {
-                            if (Workspace.isSplit) {
-                                Workspace.unsplit()
+                            tooltip = if (Workspace.isSplit) "Single pane" else "Split view",
+                            icon = if (Workspace.isSplit) {
+                                Icons.Filled.CloseFullscreen
                             } else {
-                                Workspace.showBeside(splitPartner())
-                            }
-                        },
-                    )
-                    QPageAppBarAction(
-                        tooltip = "New session",
-                        icon = Icons.Filled.Add,
-                        iconSize = 22.dp,
-                        native = true,
-                        onPressed = { navigator.pop() },
-                    )
-                    if (session is SerialSession) {
-                        QPageAppBarAction(
-                            tooltip = "Baud rate",
-                            icon = Icons.Filled.Speed,
+                                Icons.Filled.VerticalSplit
+                            },
                             native = true,
                             onPressed = {
-                                scope.launch {
-                                    val picked = pickFromList(
-                                        title = "Baud rate",
-                                        current = session.device.baudRate,
-                                        options = baudRates.map { PickOption(it, "$it") },
-                                    ) ?: return@launch
-                                    session.applySettings(
-                                        session.device.copy(baudRate = picked.value),
-                                    )
+                                if (Workspace.isSplit) {
+                                    Workspace.unsplit()
+                                } else {
+                                    Workspace.showBeside(splitPartner())
                                 }
                             },
                         )
-                    } else if (session is HostSession) {
                         QPageAppBarAction(
-                            tooltip = "System info",
-                            icon = Icons.Filled.Speed,
+                            tooltip = "New session",
+                            icon = Icons.Filled.Add,
+                            iconSize = 22.dp,
                             native = true,
-                            onPressed = { scope.launch { showSessionInfoDialog(session) } },
+                            onPressed = { navigator.pop() },
                         )
-                    }
-                },
-            )
-        },
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            Spacer(Modifier.height(8.dp))
-            TabStrip(
-                groups = groups,
-                visible = Workspace.slots.toList(),
-                focusedKey = active.key,
-                onSelect = { tab -> Workspace.show(tab.key) },
-                onSplit = { tab -> Workspace.showBeside(tab.key) },
-                onClose = ::closeTab,
-            )
-            Spacer(Modifier.height(8.dp))
-            PaneArea(open = open, focused = focusedIndex)
+                        if (session is SerialSession) {
+                            QPageAppBarAction(
+                                tooltip = "Baud rate",
+                                icon = Icons.Filled.Speed,
+                                native = true,
+                                onPressed = {
+                                    scope.launch {
+                                        val picked = pickFromList(
+                                            title = "Baud rate",
+                                            current = session.device.baudRate,
+                                            options = baudRates.map { PickOption(it, "$it") },
+                                        ) ?: return@launch
+                                        session.applySettings(
+                                            session.device.copy(baudRate = picked.value),
+                                        )
+                                    }
+                                },
+                            )
+                        } else if (session is HostSession) {
+                            QPageAppBarAction(
+                                tooltip = "System info",
+                                icon = Icons.Filled.Speed,
+                                native = true,
+                                onPressed = { scope.launch { showSessionInfoDialog(session) } },
+                            )
+                        }
+                    },
+                )
+            },
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Spacer(Modifier.height(8.dp))
+                TabStrip(
+                    groups = groups,
+                    visible = Workspace.slots.toList(),
+                    focusedKey = active.key,
+                    onSelect = { tab -> Workspace.show(tab.key) },
+                    onSplit = { tab -> Workspace.showBeside(tab.key) },
+                    onClose = ::closeTab,
+                )
+                Spacer(Modifier.height(8.dp))
+                PaneArea(open = open, focused = focusedIndex)
+            }
         }
+        PaneDragGhost(rootOrigin)
     }
 }
 
@@ -361,22 +378,28 @@ private fun ColumnScope.PaneArea(open: List<TabItem>, focused: Int) {
 @Composable
 private fun PaneHost(tab: TabItem, index: Int, focused: Boolean, split: Boolean) {
     val colors = appColors
+    val dropping = PaneDrag.hovered == tab.key
     val highlight by animateFloatAsState(
-        targetValue = if (focused && split) 1f else 0f,
+        targetValue = when {
+            dropping -> 1f
+            focused && split -> 0.55f
+            else -> 0f
+        },
         animationSpec = tween(180),
-        label = "paneFocus",
+        label = "paneHighlight",
     )
 
     Column(
         Modifier
             .fillMaxSize()
+            .then(if (tab.kind == PaneKind.FILES) Modifier.paneDropTarget(tab.key) else Modifier)
             .then(
-                if (split) {
+                if (split || dropping) {
                     Modifier
                         .clip(RoundedCornerShape(kGroupedInnerRadius))
                         .border(
-                            width = 1.dp,
-                            color = colors.accent.copy(alpha = 0.55f * highlight),
+                            width = if (dropping) 2.dp else 1.dp,
+                            color = colors.accent.copy(alpha = highlight),
                             shape = RoundedCornerShape(kGroupedInnerRadius),
                         )
                 } else {
@@ -435,10 +458,12 @@ private fun PaneBody(tab: TabItem) {
     if (tab.kind == PaneKind.FILES) {
         when {
             session == null -> FileBrowserView(
-                FileBrowsers.of(tab.key) { LocalSource(tab.groupId) },
+                browser = FileBrowsers.of(tab.key) { LocalSource() },
+                paneKey = tab.key,
             )
             session is HostSession && session.isConnected -> FileBrowserView(
-                FileBrowsers.of(tab.key) { SftpSource(session) },
+                browser = FileBrowsers.of(tab.key) { SftpSource(session) },
+                paneKey = tab.key,
             )
             else -> ConnectView(session = session) { scope.launch { session.connect() } }
         }
