@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Dns
@@ -49,6 +50,7 @@ import com.example.ohmyssh.serial.SerialRegistry
 import com.example.ohmyssh.session.PaneRef
 import com.example.ohmyssh.session.SessionManager
 import com.example.ohmyssh.session.Workspace
+import com.example.ohmyssh.ssh.HostSession
 import com.example.ohmyssh.ssh.osColorValue
 import com.example.ohmyssh.ssh.osIconAsset
 import com.example.ohmyssh.theme.appColors
@@ -71,15 +73,22 @@ fun HostsPage() {
     val buckets = VaultStore.hostsByGroup()
     val serialDevices = SerialRegistry.entries
 
-    fun connect(host: Host) {
+    fun open(host: Host, files: Boolean) {
         if (VaultStore.identityFor(host) == null) {
             AppToasts.show("Assign a user to this system first", actionLabel = "Edit") {
                 navigator.push { HostEditorPage(host) }
             }
             return
         }
-        val session = SessionManager.open(host)
-        val group = Workspace.openGroup(PaneRef.Shell(session.id))
+        val session = if (files) {
+            SessionManager.sessions.filterIsInstance<HostSession>()
+                .firstOrNull { it.host.id == host.id && it.isConnected }
+                ?: SessionManager.open(host)
+        } else {
+            SessionManager.open(host)
+        }
+        val ref = if (files) PaneRef.Files(session.id) else PaneRef.Shell(session.id)
+        val group = Workspace.openGroup(ref)
         navigator.push { SessionPage(group.id) }
     }
 
@@ -141,8 +150,8 @@ fun HostsPage() {
                     GroupedCardList(
                         title = group?.name ?: "Ungrouped",
                         items = hosts,
-                        onTap = { host -> { connect(host) } },
-                        itemBuilder = { host -> HostRow(host) },
+                        onTap = { host -> { open(host, files = false) } },
+                        itemBuilder = { host -> HostRow(host) { open(host, files = true) } },
                     )
                     Spacer(Modifier.height(5.dp))
                 }
@@ -168,7 +177,7 @@ fun HostsPage() {
 }
 
 @Composable
-private fun HostRow(host: Host) {
+private fun HostRow(host: Host, onSftp: () -> Unit) {
     val colors = appColors
     val navigator = LocalNavigator.current
     val identity = VaultStore.identityFor(host)
@@ -202,6 +211,14 @@ private fun HostRow(host: Host) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 14.4.sp),
+            )
+        }
+        IconButton(onClick = onSftp) {
+            Icon(
+                Icons.Filled.FolderOpen,
+                contentDescription = "Open SFTP",
+                tint = colors.accent,
+                modifier = Modifier.size(19.dp),
             )
         }
         IconButton(onClick = { navigator.push { HostEditorPage(host) } }) {
