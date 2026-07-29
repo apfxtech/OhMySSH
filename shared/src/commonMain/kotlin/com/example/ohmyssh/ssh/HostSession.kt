@@ -59,8 +59,6 @@ class HostSession(
     var fingerprint: String? by mutableStateOf(null)
         private set
 
-    var sftpTabOpen: Boolean by mutableStateOf(false)
-
     private val stageStatus = mutableStateMapOf<ConnectStage, Checkpoint>().apply {
         for (stage in ConnectStage.entries) put(stage, Checkpoint(stage.label, StageStatus.WAITING))
     }

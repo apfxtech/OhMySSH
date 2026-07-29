@@ -1,19 +1,21 @@
 package com.example.ohmyssh
 
-import com.example.ohmyssh.session.PaneKind
+import com.example.ohmyssh.session.PaneRef
 import com.example.ohmyssh.session.Workspace
-import com.example.ohmyssh.session.paneKey
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WorkspaceTest {
-    private val shellA = paneKey("a", PaneKind.SHELL)
-    private val filesA = paneKey("a", PaneKind.FILES)
-    private val shellB = paneKey("b", PaneKind.SHELL)
+    private val shellA = PaneRef.Shell("a")
+    private val filesA = PaneRef.Files("a")
+    private val shellB = PaneRef.Shell("b")
+
+    private fun refsOnScreen() = Workspace.windows.map { it.ref }
 
     @BeforeTest
     fun clean() = Workspace.reset()
@@ -22,128 +24,143 @@ class WorkspaceTest {
     fun tidy() = Workspace.reset()
 
     @Test
-    fun tappingATabReplacesTheFocusedPane() {
-        Workspace.show(shellA)
-        assertEquals(listOf(shellA), Workspace.slots.toList())
+    fun splittingAddsASecondWindowToThisGroup() {
+        Workspace.openGroup(shellA)
+        assertFalse(Workspace.isSplit)
+        assertEquals(1, Workspace.groups.size)
 
-        Workspace.show(shellB)
-        assertEquals(listOf(shellB), Workspace.slots.toList())
+        Workspace.split()
+
+        assertEquals(1, Workspace.groups.size)
+        assertEquals(listOf(shellA, PaneRef.Picker), refsOnScreen())
+        assertTrue(Workspace.isSplit)
+        assertEquals(PaneRef.Picker, Workspace.focusedWindow?.ref)
+    }
+
+    @Test
+    fun whatIsPickedTakesOverThatWindowOnly() {
+        Workspace.openGroup(shellA)
+        Workspace.split()
+        val picker = Workspace.focusedWindow!!
+
+        Workspace.resolve(picker.id, shellB)
+
+        assertEquals(listOf(shellA, shellB), refsOnScreen())
+        assertEquals(picker.id, Workspace.focusedWindow?.id)
+    }
+
+    @Test
+    fun reachingAnotherGroupSwapsBothWindows() {
+        Workspace.openGroup(shellA)
+        Workspace.split()
+        Workspace.resolve(Workspace.focusedWindow!!.id, filesA)
+        val first = Workspace.activeGroup!!
+
+        val second = Workspace.openGroup(shellB)
+        assertEquals(listOf(shellB), refsOnScreen())
+
+        Workspace.focusWindow(first.windows.first().id)
+        assertEquals(first.id, Workspace.activeGroupId)
+        assertEquals(listOf(shellA, filesA), refsOnScreen())
+
+        Workspace.activate(second.id)
+        assertEquals(listOf(shellB), refsOnScreen())
+    }
+
+    @Test
+    fun focusingAWindowOfTheGroupOnScreenLeavesTheOtherAlone() {
+        Workspace.openGroup(shellA)
+        Workspace.split()
+        Workspace.resolve(Workspace.focusedWindow!!.id, filesA)
+
+        val shellWindow = Workspace.windows.first()
+        Workspace.focusWindow(shellWindow.id)
+
+        assertEquals(listOf(shellA, filesA), refsOnScreen())
+        assertEquals(shellWindow.id, Workspace.focusedWindow?.id)
+    }
+
+    @Test
+    fun openingWhatIsAlreadyInThisGroupBringsItForward() {
+        Workspace.openGroup(shellA)
+        Workspace.addWindow(filesA)
+        val files = Workspace.focusedWindow!!
+
+        Workspace.focusWindow(Workspace.windows.first().id)
+        Workspace.addWindow(filesA)
+
+        assertEquals(2, Workspace.windows.size)
+        assertEquals(files.id, Workspace.focusedWindow?.id)
+    }
+
+    @Test
+    fun aThirdWindowRepointsTheFocusedOneRatherThanCrowdingTheGroup() {
+        Workspace.openGroup(shellA)
+        Workspace.addWindow(filesA)
+        val focusedId = Workspace.focusedWindow!!.id
+
+        Workspace.addWindow(shellB)
+
+        assertEquals(listOf(shellA, shellB), refsOnScreen())
+        assertEquals(focusedId, Workspace.focusedWindow?.id)
+    }
+
+    @Test
+    fun unsplitKeepsTheFocusedWindow() {
+        Workspace.openGroup(shellA)
+        Workspace.addWindow(filesA)
+        Workspace.focusWindow(Workspace.windows.first().id)
+
+        Workspace.unsplit()
+
+        assertEquals(listOf(shellA), refsOnScreen())
         assertFalse(Workspace.isSplit)
     }
 
     @Test
-    fun opensBesideUpToTwoPanes() {
-        Workspace.show(shellA)
-        Workspace.showBeside(filesA)
-        assertEquals(listOf(shellA, filesA), Workspace.slots.toList())
-        assertTrue(Workspace.isSplit)
-        assertEquals(filesA, Workspace.focusedKey)
+    fun anEmptiedGroupGoesAndTheLastOneTakesTheScreen() {
+        val first = Workspace.openGroup(shellA)
+        Workspace.openGroup(shellB)
 
-        Workspace.showBeside(shellB)
-        assertEquals(listOf(shellB, filesA), Workspace.slots.toList())
-        assertEquals(shellB, Workspace.focusedKey)
+        Workspace.closeWindow(Workspace.focusedWindow!!.id)
+
+        assertEquals(listOf(first.id), Workspace.groups.map { it.id })
+        assertEquals(listOf(shellA), refsOnScreen())
+
+        Workspace.closeWindow(Workspace.focusedWindow!!.id)
+        assertTrue(Workspace.groups.isEmpty())
+        assertNull(Workspace.focusedWindow)
     }
 
     @Test
-    fun openingAPaneThatIsAlreadyShowingJustFocusesIt() {
-        Workspace.show(shellA)
-        Workspace.showBeside(filesA)
-        Workspace.focus(0)
+    fun aClosedSessionTakesEveryWindowThatWasShowingIt() {
+        Workspace.openGroup(shellA)
+        Workspace.addWindow(filesA)
+        Workspace.openGroup(shellB)
 
-        Workspace.show(filesA)
-        assertEquals(listOf(shellA, filesA), Workspace.slots.toList())
-        assertEquals(filesA, Workspace.focusedKey)
+        Workspace.dropSession("a")
+
+        assertEquals(1, Workspace.groups.size)
+        assertEquals(listOf(shellB), refsOnScreen())
     }
 
     @Test
-    fun unsplitKeepsTheFocusedPane() {
-        Workspace.show(shellA)
-        Workspace.showBeside(filesA)
-        Workspace.focus(0)
-        Workspace.unsplit()
+    fun revealingASessionGoesToWhereItAlreadyIsInsteadOfCloningIt() {
+        val first = Workspace.openGroup(shellA)
+        Workspace.openGroup(shellB)
 
-        assertEquals(listOf(shellA), Workspace.slots.toList())
-        assertEquals(shellA, Workspace.focusedKey)
+        val found = Workspace.reveal(shellA)
+
+        assertEquals(first.id, found.id)
+        assertEquals(2, Workspace.groups.size)
+        assertEquals(shellA, Workspace.focusedWindow?.ref)
     }
 
     @Test
-    fun closingAPaneDropsItsSlotAndKeepsSomethingUp() {
-        Workspace.show(shellA)
-        Workspace.showBeside(filesA)
+    fun twoBrowsersOnThisDeviceAreAllowedSideBySide() {
+        Workspace.openGroup(PaneRef.Local)
+        Workspace.addWindow(PaneRef.Local)
 
-        Workspace.hide(filesA)
-        assertEquals(listOf(shellA), Workspace.slots.toList())
-        assertEquals(shellA, Workspace.focusedKey)
-
-        Workspace.reconcile(listOf(shellB))
-        assertEquals(listOf(shellB), Workspace.slots.toList())
-
-        Workspace.reconcile(emptyList())
-        assertTrue(Workspace.slots.isEmpty())
-        assertEquals(0, Workspace.focused)
-    }
-
-    @Test
-    fun reachingAnotherGroupSwitchesTheWholeLayout() {
-        Workspace.show(shellA)
-        Workspace.showBeside(shellB)
-
-        val shellC = paneKey("c", PaneKind.SHELL)
-        val filesC = paneKey("c", PaneKind.FILES)
-        Workspace.showGroup(listOf(shellC, filesC), shellC)
-
-        assertEquals(listOf(shellC, filesC), Workspace.slots.toList())
-        assertEquals(shellC, Workspace.focusedKey)
-    }
-
-    @Test
-    fun aGroupSwapsItsOwnWindowWithoutDisturbingTheOther() {
-        Workspace.show(shellA)
-        Workspace.showBeside(shellB)
-        Workspace.focus(0)
-
-        Workspace.replaceSlot(1, paneKey("b", PaneKind.FILES))
-
-        assertEquals(listOf(shellA, paneKey("b", PaneKind.FILES)), Workspace.slots.toList())
-        assertEquals(1, Workspace.focused)
-    }
-
-    @Test
-    fun thePickedSystemTakesOverThePickersOwnSlot() {
-        Workspace.show(shellA)
-        Workspace.showBeside(Workspace.openPicker())
-        val picker = Workspace.pickers.single()
-        assertEquals(2, Workspace.slots.size)
-
-        Workspace.resolvePicker(picker.id, shellB)
-
-        assertEquals(listOf(shellA, shellB), Workspace.slots.toList())
-        assertEquals(shellB, Workspace.focusedKey)
-        assertTrue(Workspace.pickers.isEmpty())
-    }
-
-    @Test
-    fun dismissingAPickerLeavesTheOtherPaneWhereItWas() {
-        Workspace.show(shellA)
-        val picker = Workspace.openPicker()
-        Workspace.showBeside(picker)
-
-        Workspace.closePicker(Workspace.pickers.single().id)
-
-        assertEquals(listOf(shellA), Workspace.slots.toList())
-        assertTrue(Workspace.pickers.isEmpty())
-    }
-
-    @Test
-    fun localFilesReusesAPaneThatIsNotShowing() {
-        val first = Workspace.requestLocal()
-        assertEquals(1, Workspace.localPanes.size)
-
-        assertEquals(first.id, Workspace.requestLocal().id)
-
-        Workspace.show(paneKey(first.id, PaneKind.FILES))
-        val second = Workspace.requestLocal()
-        assertTrue(second.id != first.id)
-        assertEquals(2, Workspace.localPanes.size)
+        assertEquals(listOf(PaneRef.Local, PaneRef.Local), refsOnScreen())
     }
 }

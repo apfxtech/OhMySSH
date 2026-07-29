@@ -46,9 +46,9 @@ import com.example.ohmyssh.data.newId
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.serial.SerialDeviceEntry
 import com.example.ohmyssh.serial.SerialRegistry
-import com.example.ohmyssh.session.PaneKind
+import com.example.ohmyssh.session.PaneRef
 import com.example.ohmyssh.session.SessionManager
-import com.example.ohmyssh.session.paneKey
+import com.example.ohmyssh.session.Workspace
 import com.example.ohmyssh.ssh.osColorValue
 import com.example.ohmyssh.ssh.osIconAsset
 import com.example.ohmyssh.theme.appColors
@@ -79,7 +79,8 @@ fun HostsPage() {
             return
         }
         val session = SessionManager.open(host)
-        navigator.push { SessionPage(paneKey(session.id, PaneKind.SHELL)) }
+        val group = Workspace.openGroup(PaneRef.Shell(session.id))
+        navigator.push { SessionPage(group.id) }
     }
 
     QScaffold(
@@ -153,9 +154,8 @@ fun HostsPage() {
                         onTap = { entry ->
                             {
                                 val session = SessionManager.openSerial(entry)
-                                navigator.push {
-                                    SessionPage(paneKey(session.id, PaneKind.SHELL))
-                                }
+                                val group = Workspace.reveal(PaneRef.Shell(session.id))
+                                navigator.push { SessionPage(group.id) }
                             }
                         },
                         itemBuilder = { entry -> SerialRow(entry) },

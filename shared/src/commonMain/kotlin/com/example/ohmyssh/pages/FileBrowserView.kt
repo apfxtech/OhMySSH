@@ -77,9 +77,8 @@ import com.example.ohmyssh.platform.FilePick
 import com.example.ohmyssh.platform.appPlatform
 import com.example.ohmyssh.platform.isDesktop
 import com.example.ohmyssh.services.Log
-import com.example.ohmyssh.session.PaneKind
+import com.example.ohmyssh.session.PaneRef
 import com.example.ohmyssh.session.Workspace
-import com.example.ohmyssh.session.paneKey
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.ui.DragPayload
@@ -90,7 +89,7 @@ import com.example.ohmyssh.widgets.promptForText
 import kotlinx.coroutines.launch
 
 @Composable
-fun FileBrowserView(browser: FileBrowserState, paneKey: String) {
+fun FileBrowserView(browser: FileBrowserState, windowId: String) {
     val colors = appColors
     val navigator = LocalNavigator.current
     // The browser's own scope, not the composition's: a transfer has to
@@ -345,7 +344,7 @@ fun FileBrowserView(browser: FileBrowserState, paneKey: String) {
                                 title = "Folders (${browser.folders.size})",
                                 entries = browser.folders,
                                 browser = browser,
-                                paneKey = paneKey,
+                                windowId = windowId,
                                 onOpen = ::openEntry,
                                 onAction = ::runAction,
                             )
@@ -358,7 +357,7 @@ fun FileBrowserView(browser: FileBrowserState, paneKey: String) {
                                 title = "Files (${browser.files.size})",
                                 entries = browser.files,
                                 browser = browser,
-                                paneKey = paneKey,
+                                windowId = windowId,
                                 onOpen = ::openEntry,
                                 onAction = ::runAction,
                             )
@@ -379,8 +378,7 @@ fun FileBrowserView(browser: FileBrowserState, paneKey: String) {
                     foreground = colors.textSecondary,
                     enabled = true,
                 ) {
-                    val pane = Workspace.requestLocal()
-                    Workspace.showBeside(paneKey(pane.id, PaneKind.FILES))
+                    Workspace.addWindow(PaneRef.Local)
                 }
                 Spacer(Modifier.height(10.dp))
                 FloatingAction(
@@ -433,7 +431,7 @@ private fun EntrySection(
     title: String,
     entries: List<FileEntry>,
     browser: FileBrowserState,
-    paneKey: String,
+    windowId: String,
     onOpen: (FileEntry) -> Unit,
     onAction: (EntryAction, FileEntry) -> Unit,
 ) {
@@ -443,10 +441,10 @@ private fun EntrySection(
         onTap = { entry -> { onOpen(entry) } },
         cardGesture = { entry ->
             Modifier.paneDragSource(
-                key = "$paneKey/${browser.path}/${entry.name}",
+                key = "$windowId/${browser.path}/${entry.name}",
                 payload = {
                     DragPayload(
-                        sourceKey = paneKey,
+                        sourceKey = windowId,
                         browser = browser,
                         entries = browser.dragPayload(entry),
                     )

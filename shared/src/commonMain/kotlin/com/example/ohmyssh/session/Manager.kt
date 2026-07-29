@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.ohmyssh.data.Host
 import com.example.ohmyssh.data.VaultStore
-import com.example.ohmyssh.fs.FileBrowsers
 import com.example.ohmyssh.serial.SerialDeviceEntry
 import com.example.ohmyssh.serial.SerialRegistry
 import com.example.ohmyssh.serial.SerialSession
@@ -96,7 +95,7 @@ object SessionManager {
         val index = sessions.indexOfFirst { it.id == id }
         if (index < 0) return
         val session = sessions.removeAt(index)
-        FileBrowsers.forgetGroup("$id:")
+        Workspace.dropSession(id)
 
         if (activeId == id) {
             activeId = sessions.getOrNull(index.coerceAtMost(sessions.size - 1))?.id
@@ -110,7 +109,6 @@ object SessionManager {
     suspend fun closeAll() {
         Workspace.reset()
         val open = sessions.toList()
-        for (session in open) FileBrowsers.forgetGroup("${session.id}:")
         sessions.clear()
         activeId = null
         onSessionsChanged?.invoke()

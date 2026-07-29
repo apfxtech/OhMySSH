@@ -199,9 +199,4 @@ object FileBrowsers {
     fun forget(key: String) {
         states.remove(key)?.dispose()
     }
-
-    fun forgetGroup(prefix: String) {
-        val doomed = states.keys.filter { it.startsWith(prefix) }
-        for (key in doomed) forget(key)
-    }
 }

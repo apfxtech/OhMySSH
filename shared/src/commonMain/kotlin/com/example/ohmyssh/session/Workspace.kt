@@ -7,150 +7,173 @@ import androidx.compose.runtime.setValue
 import com.example.ohmyssh.data.newId
 import com.example.ohmyssh.fs.FileBrowsers
 
-enum class PaneKind { SHELL, FILES, PICK }
+sealed class PaneRef {
+    data class Shell(val session: String) : PaneRef()
 
-fun paneKey(groupId: String, kind: PaneKind): String = "$groupId:${kind.name.lowercase()}"
+    data class Files(val session: String) : PaneRef()
 
-class LocalPane(val id: String)
+    data object Local : PaneRef()
 
-class PickerPane(val id: String)
+    data object Picker : PaneRef()
+}
+
+fun PaneRef.sessionId(): String? = when (this) {
+    is PaneRef.Shell -> session
+    is PaneRef.Files -> session
+    else -> null
+}
+
+class PaneWindow(val id: String, ref: PaneRef) {
+    var ref: PaneRef by mutableStateOf(ref)
+}
+
+class PaneGroup(val id: String) {
+    val windows = mutableStateListOf<PaneWindow>()
+}
 
 object Workspace {
-    const val MAX_SLOTS = 2
+    const val MAX_WINDOWS = 2
 
-    val localPanes = mutableStateListOf<LocalPane>()
+    val groups = mutableStateListOf<PaneGroup>()
 
-    val pickers = mutableStateListOf<PickerPane>()
-
-    val slots = mutableStateListOf<String>()
-
-    var focused: Int by mutableStateOf(0)
+    var activeGroupId: String? by mutableStateOf(null)
         private set
 
-    val isSplit: Boolean get() = slots.size >= 2
+    var focusedWindowId: String? by mutableStateOf(null)
+        private set
 
-    val focusedKey: String? get() = slots.getOrNull(focused)
+    val activeGroup: PaneGroup? get() = groups.firstOrNull { it.id == activeGroupId }
 
-    fun focus(index: Int) {
-        if (index in slots.indices) focused = index
+    val windows: List<PaneWindow> get() = activeGroup?.windows.orEmpty()
+
+    val focusedWindow: PaneWindow?
+        get() = windows.firstOrNull { it.id == focusedWindowId } ?: windows.firstOrNull()
+
+    val isSplit: Boolean get() = windows.size >= 2
+
+    fun windowById(id: String): PaneWindow? =
+        groups.firstNotNullOfOrNull { group -> group.windows.firstOrNull { it.id == id } }
+
+    fun openGroup(ref: PaneRef): PaneGroup {
+        val group = PaneGroup("g-${newId()}")
+        val window = PaneWindow("w-${newId()}", ref)
+        group.windows.add(window)
+        groups.add(group)
+        activeGroupId = group.id
+        focusedWindowId = window.id
+        return group
     }
 
-    fun focusKey(key: String) {
-        val index = slots.indexOf(key)
-        if (index >= 0) focused = index
+    fun reveal(ref: PaneRef): PaneGroup {
+        for (group in groups) {
+            val window = group.windows.firstOrNull { it.ref == ref } ?: continue
+            activeGroupId = group.id
+            focusedWindowId = window.id
+            return group
+        }
+        return openGroup(ref)
     }
 
-    fun replaceSlot(index: Int, key: String) {
-        if (index !in slots.indices) {
-            show(key)
-            return
+    fun activate(groupId: String) {
+        val group = groups.firstOrNull { it.id == groupId } ?: return
+        activeGroupId = group.id
+        if (group.windows.none { it.id == focusedWindowId }) {
+            focusedWindowId = group.windows.firstOrNull()?.id
         }
-        slots[index] = key
-        focused = index
     }
 
-    fun showGroup(keys: List<String>, focus: String) {
-        val visible = keys.take(MAX_SLOTS)
-        if (visible.isEmpty()) return
-        slots.clear()
-        slots.addAll(visible)
-        focused = visible.indexOf(focus).coerceAtLeast(0)
+    fun focusWindow(windowId: String) {
+        val group = groups.firstOrNull { g -> g.windows.any { it.id == windowId } } ?: return
+        activeGroupId = group.id
+        focusedWindowId = windowId
     }
 
-    fun show(key: String) {
-        val existing = slots.indexOf(key)
-        if (existing >= 0) {
-            focused = existing
-            return
+    fun addWindow(ref: PaneRef): PaneWindow {
+        val group = activeGroup ?: return openGroup(ref).windows.first()
+
+        if (ref.sessionId() != null) {
+            group.windows.firstOrNull { it.ref == ref }?.let {
+                focusedWindowId = it.id
+                return it
+            }
         }
-        if (slots.isEmpty()) {
-            slots.add(key)
-            focused = 0
-            return
+
+        if (group.windows.size >= MAX_WINDOWS) {
+            val target = group.windows.firstOrNull { it.id == focusedWindowId }
+                ?: group.windows.first()
+            retire(target)
+            target.ref = ref
+            focusedWindowId = target.id
+            return target
         }
-        slots[focused.coerceIn(0, slots.size - 1)] = key
+
+        val window = PaneWindow("w-${newId()}", ref)
+        group.windows.add(window)
+        focusedWindowId = window.id
+        return window
     }
 
-    fun showBeside(key: String) {
-        val existing = slots.indexOf(key)
-        if (existing >= 0) {
-            focused = existing
-            return
-        }
-        if (slots.size < MAX_SLOTS) {
-            slots.add(key)
-            focused = slots.size - 1
-            return
-        }
-        val other = if (focused == 0) 1 else 0
-        slots[other] = key
-        focused = other
+    fun split() {
+        if (isSplit) return
+        addWindow(PaneRef.Picker)
     }
 
     fun unsplit() {
-        if (slots.size < 2) return
-        val keep = slots[focused.coerceIn(0, slots.size - 1)]
-        slots.clear()
-        slots.add(keep)
-        focused = 0
+        val group = activeGroup ?: return
+        if (group.windows.size < 2) return
+        val keep = group.windows.firstOrNull { it.id == focusedWindowId } ?: group.windows.first()
+        for (window in group.windows.toList()) {
+            if (window.id == keep.id) continue
+            retire(window)
+            group.windows.remove(window)
+        }
+        focusedWindowId = keep.id
     }
 
-    fun hide(key: String) {
-        val index = slots.indexOf(key)
-        if (index < 0) return
-        slots.removeAt(index)
-        if (focused >= slots.size) focused = (slots.size - 1).coerceAtLeast(0)
+    fun resolve(windowId: String, ref: PaneRef) {
+        val window = windowById(windowId) ?: return
+        retire(window)
+        window.ref = ref
+        focusedWindowId = window.id
     }
 
-    fun openLocal(): LocalPane {
-        val pane = LocalPane("local-${newId()}")
-        localPanes.add(pane)
-        return pane
-    }
+    fun closeWindow(windowId: String) {
+        val group = groups.firstOrNull { g -> g.windows.any { it.id == windowId } } ?: return
+        val window = group.windows.first { it.id == windowId }
+        retire(window)
+        group.windows.remove(window)
 
-    fun requestLocal(): LocalPane =
-        localPanes.firstOrNull { !slots.contains(paneKey(it.id, PaneKind.FILES)) } ?: openLocal()
-
-    fun openPicker(): String {
-        val pane = PickerPane("new-${newId()}")
-        pickers.add(pane)
-        return paneKey(pane.id, PaneKind.PICK)
-    }
-
-    fun resolvePicker(pickerId: String, key: String) {
-        val index = slots.indexOf(paneKey(pickerId, PaneKind.PICK))
-        pickers.removeAll { it.id == pickerId }
-        if (index < 0) {
-            show(key)
+        if (group.windows.isNotEmpty()) {
+            if (focusedWindowId == windowId) focusedWindowId = group.windows.first().id
             return
         }
-        slots[index] = key
-        focused = index
+
+        groups.remove(group)
+        if (activeGroupId == group.id) {
+            val next = groups.lastOrNull()
+            activeGroupId = next?.id
+            focusedWindowId = next?.windows?.firstOrNull()?.id
+        }
     }
 
-    fun closePicker(pickerId: String) {
-        hide(paneKey(pickerId, PaneKind.PICK))
-        pickers.removeAll { it.id == pickerId }
-    }
-
-    fun closeLocal(id: String) {
-        hide(paneKey(id, PaneKind.FILES))
-        FileBrowsers.forgetGroup("$id:")
-        localPanes.removeAll { it.id == id }
-    }
-
-    fun reconcile(available: List<String>) {
-        val dead = slots.filterNot { available.contains(it) }
-        for (key in dead) slots.remove(key)
-        if (slots.isEmpty() && available.isNotEmpty()) slots.add(available.first())
-        if (focused >= slots.size) focused = (slots.size - 1).coerceAtLeast(0)
+    fun dropSession(sessionId: String) {
+        for (group in groups.toList()) {
+            for (window in group.windows.toList()) {
+                if (window.ref.sessionId() == sessionId) closeWindow(window.id)
+            }
+        }
     }
 
     fun reset() {
-        slots.clear()
-        focused = 0
-        pickers.clear()
-        for (pane in localPanes.toList()) FileBrowsers.forgetGroup("${pane.id}:")
-        localPanes.clear()
+        for (group in groups) {
+            for (window in group.windows) retire(window)
+        }
+        groups.clear()
+        activeGroupId = null
+        focusedWindowId = null
+    }
+
+    private fun retire(window: PaneWindow) {
+        FileBrowsers.forget(window.id)
     }
 }

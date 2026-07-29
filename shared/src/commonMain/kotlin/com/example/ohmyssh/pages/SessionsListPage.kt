@@ -41,9 +41,9 @@ import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.serial.SerialSession
 import com.example.ohmyssh.serial.serialPortName
-import com.example.ohmyssh.session.PaneKind
+import com.example.ohmyssh.session.PaneRef
 import com.example.ohmyssh.session.SessionManager
-import com.example.ohmyssh.session.paneKey
+import com.example.ohmyssh.session.Workspace
 import com.example.ohmyssh.session.TerminalSession
 import com.example.ohmyssh.ssh.HostSession
 import com.example.ohmyssh.ssh.osColorValue
@@ -102,9 +102,8 @@ fun SessionsListPage() {
                     items = sessions.toList(),
                     onTap = { session ->
                         {
-                            navigator.push {
-                                SessionPage(paneKey(session.id, PaneKind.SHELL))
-                            }
+                            val group = Workspace.reveal(PaneRef.Shell(session.id))
+                            navigator.push { SessionPage(group.id) }
                         }
                     },
                     itemBuilder = { session -> SessionRow(session) },
@@ -120,8 +119,7 @@ private fun SessionRow(session: TerminalSession) {
     val scope = rememberCoroutineScope()
 
     val detail = when (session) {
-        is HostSession -> "${session.statusLabel} · ${session.host.endpoint}" +
-            if (session.sftpTabOpen) " · SFTP" else ""
+        is HostSession -> "${session.statusLabel} · ${session.host.endpoint}"
         is SerialSession -> "${session.statusLabel} · " +
             "${serialPortName(session.device.path)} · ${session.device.baudRate}"
         else -> session.statusLabel

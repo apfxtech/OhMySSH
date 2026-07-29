@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.outlined.Dns
@@ -49,6 +50,7 @@ fun ConnectionPicker(
     onOpenShell: (Host) -> Unit,
     onOpenSftp: (Host) -> Unit,
     onOpenSerial: (SerialDeviceEntry) -> Unit,
+    onOpenLocal: () -> Unit,
 ) {
     val colors = appColors
     val navigator = LocalNavigator.current
@@ -62,20 +64,33 @@ fun ConnectionPicker(
     val serialDevices = SerialRegistry.entries
 
     if (buckets.isEmpty() && serialDevices.isEmpty()) {
-        QEmptyView(
-            icon = Icons.Outlined.Dns,
-            title = "No systems yet",
-            message = "Add a system to open it here.",
-            action = {
-                Button(
-                    onClick = { navigator.push { HostEditorPage(null) } },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.accent,
-                        contentColor = colors.onAccent,
-                    ),
-                ) { Text("Add system") }
-            },
-        )
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(top = 9.dp, bottom = 20.dp),
+        ) {
+            QEmptyView(
+                icon = Icons.Outlined.Dns,
+                title = "No systems yet",
+                message = "Add a system to open it here.",
+                action = {
+                    Button(
+                        onClick = { navigator.push { HostEditorPage(null) } },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.accent,
+                            contentColor = colors.onAccent,
+                        ),
+                    ) { Text("Add system") }
+                },
+            )
+            GroupedCardList(
+                title = "This device",
+                items = listOf(Unit),
+                onTap = { { onOpenLocal() } },
+                itemBuilder = { LocalFilesRow() },
+            )
+        }
         return
     }
 
@@ -95,6 +110,14 @@ fun ConnectionPicker(
             )
             Spacer(Modifier.height(5.dp))
         }
+        Spacer(Modifier.height(5.dp))
+        GroupedCardList(
+            title = "This device",
+            items = listOf(Unit),
+            onTap = { { onOpenLocal() } },
+            itemBuilder = { LocalFilesRow() },
+        )
+        Spacer(Modifier.height(5.dp))
         if (serialDevices.isNotEmpty()) {
             Spacer(Modifier.height(5.dp))
             GroupedCardList(
@@ -183,6 +206,42 @@ private fun PickerSerialRow(entry: SerialDeviceEntry) {
             Spacer(Modifier.height(2.dp))
             Text(
                 entry.subtitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 14.4.sp),
+            )
+        }
+        Icon(
+            Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = colors.textMuted,
+            modifier = Modifier.padding(start = 2.dp).size(16.dp),
+        )
+    }
+}
+
+@Composable
+private fun LocalFilesRow() {
+    val colors = appColors
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        QIconBadge(icon = Icons.Filled.Folder, color = colors.accent)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Local files",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(
+                    color = colors.textPrimary,
+                    fontSize = 14.5.sp,
+                    lineHeight = 17.4.sp,
+                    fontWeight = FontWeight.W600,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Browse this device and drag files across",
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 14.4.sp),

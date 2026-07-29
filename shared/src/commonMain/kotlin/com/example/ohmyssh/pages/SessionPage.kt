@@ -48,11 +48,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,20 +67,21 @@ import com.example.ohmyssh.components.kGroupedGap
 import com.example.ohmyssh.components.kGroupedHorizontalPadding
 import com.example.ohmyssh.components.kGroupedInnerRadius
 import com.example.ohmyssh.components.kGroupedOuterRadius
-import com.example.ohmyssh.fs.FileBrowsers
-import com.example.ohmyssh.fs.LocalSource
 import com.example.ohmyssh.data.Host
 import com.example.ohmyssh.data.VaultStore
+import com.example.ohmyssh.fs.FileBrowsers
+import com.example.ohmyssh.fs.LocalSource
 import com.example.ohmyssh.fs.SftpSource
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.serial.SerialSession
-import com.example.ohmyssh.session.LocalPane
-import com.example.ohmyssh.session.PaneKind
+import com.example.ohmyssh.session.PaneGroup
+import com.example.ohmyssh.session.PaneRef
+import com.example.ohmyssh.session.PaneWindow
 import com.example.ohmyssh.session.SessionManager
 import com.example.ohmyssh.session.SessionState
 import com.example.ohmyssh.session.TerminalSession
 import com.example.ohmyssh.session.Workspace
-import com.example.ohmyssh.session.paneKey
+import com.example.ohmyssh.session.sessionId
 import com.example.ohmyssh.ssh.HostSession
 import com.example.ohmyssh.terminal.TerminalView
 import com.example.ohmyssh.terminal.terminalPalette
@@ -96,17 +97,6 @@ import com.example.ohmyssh.widgets.confirmDestructive
 import com.example.ohmyssh.widgets.pickFromList
 import kotlinx.coroutines.launch
 
-private class TabItem(
-    val key: String,
-    val groupId: String,
-    val kind: PaneKind,
-    val title: String,
-    val session: TerminalSession?,
-    val local: LocalPane?,
-)
-
-private class TabGroup(val tabs: List<TabItem>)
-
 private val baudRates = listOf(
     300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600,
 )
@@ -116,99 +106,23 @@ private val kSideBySideWidth = 700.dp
 private val kTabHeight = 42.dp
 private val kMinTabWidth = 136.dp
 
+private fun sessionOf(ref: PaneRef): TerminalSession? =
+    ref.sessionId()?.let { SessionManager.byId(it) }
+
 @Composable
-fun SessionPage(initialKey: String) {
+fun SessionPage(groupId: String) {
     val colors = appColors
     val navigator = LocalNavigator.current
     val scope = rememberCoroutineScope()
 
-    val groups = buildList {
-        for (session in SessionManager.sessions) {
-            val tabs = buildList {
-                add(
-                    TabItem(
-                        key = paneKey(session.id, PaneKind.SHELL),
-                        groupId = session.id,
-                        kind = PaneKind.SHELL,
-                        title = session.title,
-                        session = session,
-                        local = null,
-                    ),
-                )
-                if (session is HostSession && session.sftpTabOpen) {
-                    add(
-                        TabItem(
-                            key = paneKey(session.id, PaneKind.FILES),
-                            groupId = session.id,
-                            kind = PaneKind.FILES,
-                            title = session.title,
-                            session = session,
-                            local = null,
-                        ),
-                    )
-                }
-            }
-            add(TabGroup(tabs))
-        }
-        for (pane in Workspace.pickers) {
-            add(
-                TabGroup(
-                    listOf(
-                        TabItem(
-                            key = paneKey(pane.id, PaneKind.PICK),
-                            groupId = pane.id,
-                            kind = PaneKind.PICK,
-                            title = "New session",
-                            session = null,
-                            local = null,
-                        ),
-                    ),
-                ),
-            )
-        }
-        for (pane in Workspace.localPanes) {
-            add(
-                TabGroup(
-                    listOf(
-                        TabItem(
-                            key = paneKey(pane.id, PaneKind.FILES),
-                            groupId = pane.id,
-                            kind = PaneKind.FILES,
-                            title = "This device",
-                            session = null,
-                            local = pane,
-                        ),
-                    ),
-                ),
-            )
-        }
-    }
-    val tabs = groups.flatMap { it.tabs }
+    remember(groupId) { Workspace.activate(groupId) }
 
-    fun selectKey(key: String) {
-        val group = groups.firstOrNull { group -> group.tabs.any { it.key == key } } ?: return
-        val slotOfGroup = Workspace.slots.indexOfFirst { slot ->
-            group.tabs.any { it.key == slot }
-        }
-        when {
-            Workspace.slots.contains(key) -> Workspace.focusKey(key)
-            slotOfGroup >= 0 -> Workspace.replaceSlot(slotOfGroup, key)
-            else -> Workspace.showGroup(group.tabs.map { it.key }, key)
-        }
-    }
+    val groups = Workspace.groups.toList()
+    val windows = Workspace.windows
+    val focused = Workspace.focusedWindow
 
-    remember(initialKey) { selectKey(initialKey) }
-    LaunchedEffect(tabs.map { it.key }) { Workspace.reconcile(tabs.map { it.key }) }
-
-    val open = Workspace.slots.mapNotNull { key -> tabs.firstOrNull { it.key == key } }
-    val focusedIndex = Workspace.focused.coerceIn(0, (open.size - 1).coerceAtLeast(0))
-    val active = open.getOrNull(focusedIndex)
-
-    LaunchedEffect(active?.session?.id) {
-        active?.session?.let { SessionManager.activate(it.id) }
-    }
-
-    if (active == null) {
+    if (focused == null) {
+        LaunchedEffect(Unit) { navigator.pop() }
         QScaffold(appBar = { QPageAppBar(title = "Sessions") }) {
             QEmptyView(
                 icon = Icons.Filled.Terminal,
@@ -219,27 +133,20 @@ fun SessionPage(initialKey: String) {
         return
     }
 
-    fun closeTab(tab: TabItem) {
+    val session = sessionOf(focused.ref)
+
+    LaunchedEffect(session?.id) {
+        session?.let { SessionManager.activate(it.id) }
+    }
+
+    fun closeWindow(window: PaneWindow) {
         scope.launch {
-            val target = tab.session
-            if (tab.kind == PaneKind.PICK) {
-                Workspace.closePicker(tab.groupId)
-                if (tabs.size <= 1) navigator.pop()
-                return@launch
-            }
-            if (tab.kind == PaneKind.FILES) {
-                if (target is HostSession) {
-                    target.sftpTabOpen = false
-                    Workspace.hide(tab.key)
-                    FileBrowsers.forget(tab.key)
-                } else {
-                    tab.local?.let { Workspace.closeLocal(it.id) }
-                }
-                if (tabs.size <= 1) navigator.pop()
+            val target = sessionOf(window.ref)
+            if (window.ref !is PaneRef.Shell || target == null) {
+                Workspace.closeWindow(window.id)
                 return@launch
             }
 
-            target ?: return@launch
             val confirmed = if (target.isConnected) {
                 confirmDestructive(
                     title = "Close session?",
@@ -250,17 +157,9 @@ fun SessionPage(initialKey: String) {
                 true
             }
             if (!confirmed) return@launch
-
-            Workspace.hide(paneKey(target.id, PaneKind.SHELL))
-            Workspace.hide(paneKey(target.id, PaneKind.FILES))
             SessionManager.close(target.id)
-            if (SessionManager.sessions.isEmpty() && Workspace.localPanes.isEmpty()) {
-                navigator.pop()
-            }
         }
     }
-
-    val session = active.session
 
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
 
@@ -272,10 +171,10 @@ fun SessionPage(initialKey: String) {
         QScaffold(
             appBar = {
                 QPageAppBar(
-                    title = active.title,
+                    title = windowTitle(focused.ref),
                     subtitle = when {
                         session != null -> session.subtitle
-                        active.kind == PaneKind.PICK -> "Choose a system"
+                        focused.ref is PaneRef.Picker -> "Choose a system"
                         else -> "Local files"
                     },
                     statusColor = session?.let { statusColor(colors, it) },
@@ -288,19 +187,16 @@ fun SessionPage(initialKey: String) {
                                 onPressed = { scope.launch { session.connect() } },
                             )
                         }
-                        if (session is HostSession && session.isConnected && !session.sftpTabOpen) {
+                        if (session is HostSession && session.isConnected) {
                             QPageAppBarAction(
                                 tooltip = "Open SFTP",
                                 icon = Icons.Filled.FolderOpen,
                                 native = true,
-                                onPressed = {
-                                    session.sftpTabOpen = true
-                                    Workspace.show(paneKey(session.id, PaneKind.FILES))
-                                },
+                                onPressed = { Workspace.addWindow(PaneRef.Files(session.id)) },
                             )
                         }
                         QPageAppBarAction(
-                            tooltip = if (Workspace.isSplit) "Single pane" else "Split view",
+                            tooltip = if (Workspace.isSplit) "Single window" else "Split group",
                             icon = if (Workspace.isSplit) {
                                 Icons.Filled.CloseFullscreen
                             } else {
@@ -308,23 +204,15 @@ fun SessionPage(initialKey: String) {
                             },
                             native = true,
                             onPressed = {
-                                if (Workspace.isSplit) {
-                                    Workspace.unsplit()
-                                } else {
-                                    Workspace.showBeside(Workspace.openPicker())
-                                }
+                                if (Workspace.isSplit) Workspace.unsplit() else Workspace.split()
                             },
                         )
                         QPageAppBarAction(
-                            tooltip = "New session",
+                            tooltip = "New group",
                             icon = Icons.Filled.Add,
                             iconSize = 22.dp,
                             native = true,
-                            onPressed = {
-                                if (active.kind != PaneKind.PICK) {
-                                    Workspace.show(Workspace.openPicker())
-                                }
-                            },
+                            onPressed = { Workspace.openGroup(PaneRef.Picker) },
                         )
                         if (session is SerialSession) {
                             QPageAppBarAction(
@@ -360,14 +248,13 @@ fun SessionPage(initialKey: String) {
                 Spacer(Modifier.height(8.dp))
                 TabStrip(
                     groups = groups,
-                    visible = Workspace.slots.toList(),
-                    focusedKey = active.key,
-                    onSelect = { tab -> selectKey(tab.key) },
-                    onSplit = { tab -> Workspace.showBeside(tab.key) },
-                    onClose = ::closeTab,
+                    activeGroupId = Workspace.activeGroupId,
+                    focusedWindowId = focused.id,
+                    onSelect = { window -> Workspace.focusWindow(window.id) },
+                    onClose = ::closeWindow,
                 )
                 Spacer(Modifier.height(8.dp))
-                PaneArea(open = open, focused = focusedIndex)
+                WindowArea(windows = windows, focusedId = focused.id)
             }
         }
         PaneDragGhost(rootOrigin)
@@ -375,28 +262,30 @@ fun SessionPage(initialKey: String) {
 }
 
 @Composable
-private fun ColumnScope.PaneArea(open: List<TabItem>, focused: Int) {
+private fun ColumnScope.WindowArea(windows: List<PaneWindow>, focusedId: String) {
     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-        if (open.size < 2) {
-            open.firstOrNull()?.let { tab -> PaneHost(tab, index = 0, focused = true, split = false) }
+        if (windows.size < 2) {
+            windows.firstOrNull()?.let { window ->
+                WindowHost(window, focused = true, split = false)
+            }
             return@BoxWithConstraints
         }
 
         if (maxWidth >= kSideBySideWidth) {
             Row(Modifier.fillMaxSize()) {
-                open.forEachIndexed { index, tab ->
+                windows.forEachIndexed { index, window ->
                     if (index > 0) Spacer(Modifier.width(kGroupedGap).fillMaxHeight())
                     Box(Modifier.weight(1f).fillMaxHeight()) {
-                        PaneHost(tab, index, index == focused, split = true)
+                        WindowHost(window, window.id == focusedId, split = true)
                     }
                 }
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                open.forEachIndexed { index, tab ->
+                windows.forEachIndexed { index, window ->
                     if (index > 0) Spacer(Modifier.height(kGroupedGap).fillMaxWidth())
                     Box(Modifier.weight(1f).fillMaxWidth()) {
-                        PaneHost(tab, index, index == focused, split = true)
+                        WindowHost(window, window.id == focusedId, split = true)
                     }
                 }
             }
@@ -405,9 +294,9 @@ private fun ColumnScope.PaneArea(open: List<TabItem>, focused: Int) {
 }
 
 @Composable
-private fun PaneHost(tab: TabItem, index: Int, focused: Boolean, split: Boolean) {
+private fun WindowHost(window: PaneWindow, focused: Boolean, split: Boolean) {
     val colors = appColors
-    val dropping = PaneDrag.hovered == tab.key
+    val dropping = PaneDrag.hovered == window.id
     val highlight by animateFloatAsState(
         targetValue = when {
             dropping -> 1f
@@ -415,13 +304,14 @@ private fun PaneHost(tab: TabItem, index: Int, focused: Boolean, split: Boolean)
             else -> 0f
         },
         animationSpec = tween(180),
-        label = "paneHighlight",
+        label = "windowHighlight",
     )
+    val takesFiles = window.ref is PaneRef.Files || window.ref is PaneRef.Local
 
     Column(
         Modifier
             .fillMaxSize()
-            .then(if (tab.kind == PaneKind.FILES) Modifier.paneDropTarget(tab.key) else Modifier)
+            .then(if (takesFiles) Modifier.paneDropTarget(window.id) else Modifier)
             .then(
                 if (split || dropping) {
                     Modifier
@@ -438,15 +328,15 @@ private fun PaneHost(tab: TabItem, index: Int, focused: Boolean, split: Boolean)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-            ) { Workspace.focus(index) },
+            ) { Workspace.focusWindow(window.id) },
     ) {
-        if (split) PaneCaption(tab, focused)
-        Box(Modifier.weight(1f).fillMaxWidth()) { PaneBody(tab) }
+        if (split) WindowCaption(window, focused)
+        Box(Modifier.weight(1f).fillMaxWidth()) { WindowBody(window) }
     }
 }
 
 @Composable
-private fun PaneCaption(tab: TabItem, focused: Boolean) {
+private fun WindowCaption(window: PaneWindow, focused: Boolean) {
     val colors = appColors
     Row(
         Modifier
@@ -459,14 +349,14 @@ private fun PaneCaption(tab: TabItem, focused: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            tabIcon(tab),
+            windowIcon(window.ref),
             contentDescription = null,
             tint = if (focused) colors.accent else colors.textMuted,
             modifier = Modifier.size(13.dp),
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            "${tab.title} · ${tabKindLabel(tab)}",
+            "${windowTitle(window.ref)} · ${windowKindLabel(window.ref)}",
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             style = TextStyle(
@@ -479,32 +369,38 @@ private fun PaneCaption(tab: TabItem, focused: Boolean) {
 }
 
 @Composable
-private fun PaneBody(tab: TabItem) {
+private fun WindowBody(window: PaneWindow) {
     val colors = appColors
-    val session = tab.session
     val scope = rememberCoroutineScope()
+    val ref = window.ref
 
-    if (tab.kind == PaneKind.PICK) {
-        PickerBody(tab)
+    if (ref is PaneRef.Picker) {
+        PickerBody(window)
         return
     }
 
-    if (tab.kind == PaneKind.FILES) {
-        when {
-            session == null -> FileBrowserView(
-                browser = FileBrowsers.of(tab.key) { LocalSource() },
-                paneKey = tab.key,
+    if (ref is PaneRef.Local) {
+        FileBrowserView(
+            browser = FileBrowsers.of(window.id) { LocalSource() },
+            windowId = window.id,
+        )
+        return
+    }
+
+    val session = sessionOf(ref) ?: return
+
+    if (ref is PaneRef.Files) {
+        if (session is HostSession && session.isConnected) {
+            FileBrowserView(
+                browser = FileBrowsers.of(window.id) { SftpSource(session) },
+                windowId = window.id,
             )
-            session is HostSession && session.isConnected -> FileBrowserView(
-                browser = FileBrowsers.of(tab.key) { SftpSource(session) },
-                paneKey = tab.key,
-            )
-            else -> ConnectView(session = session) { scope.launch { session.connect() } }
+        } else {
+            ConnectView(session = session) { scope.launch { session.connect() } }
         }
         return
     }
 
-    session ?: return
     val connecting = session.state == SessionState.CONNECTING ||
         session.state == SessionState.FAILED ||
         session.state == SessionState.IDLE
@@ -532,17 +428,51 @@ private fun PaneBody(tab: TabItem) {
 }
 
 @Composable
+private fun PickerBody(window: PaneWindow) {
+    val navigator = LocalNavigator.current
+
+    fun open(host: Host, files: Boolean) {
+        if (VaultStore.identityFor(host) == null) {
+            AppToasts.show("Assign a user to this system first", actionLabel = "Edit") {
+                navigator.push { HostEditorPage(host) }
+            }
+            return
+        }
+        val session = if (files) {
+            SessionManager.sessions.filterIsInstance<HostSession>()
+                .firstOrNull { it.host.id == host.id && it.isConnected }
+                ?: SessionManager.open(host)
+        } else {
+            SessionManager.open(host)
+        }
+        Workspace.resolve(
+            window.id,
+            if (files) PaneRef.Files(session.id) else PaneRef.Shell(session.id),
+        )
+    }
+
+    ConnectionPicker(
+        onOpenShell = { host -> open(host, files = false) },
+        onOpenSftp = { host -> open(host, files = true) },
+        onOpenSerial = { entry ->
+            val session = SessionManager.openSerial(entry)
+            Workspace.resolve(window.id, PaneRef.Shell(session.id))
+        },
+        onOpenLocal = { Workspace.resolve(window.id, PaneRef.Local) },
+    )
+}
+
+@Composable
 private fun TabStrip(
-    groups: List<TabGroup>,
-    visible: List<String>,
-    focusedKey: String,
-    onSelect: (TabItem) -> Unit,
-    onSplit: (TabItem) -> Unit,
-    onClose: (TabItem) -> Unit,
+    groups: List<PaneGroup>,
+    activeGroupId: String?,
+    focusedWindowId: String,
+    onSelect: (PaneWindow) -> Unit,
+    onClose: (PaneWindow) -> Unit,
 ) {
     val scroll = rememberScrollState()
     val groupGap = kGroupedGap * 3
-    val tabCount = groups.sumOf { it.tabs.size }
+    val tabCount = groups.sumOf { it.windows.size }
 
     BoxWithConstraints(
         Modifier.fillMaxWidth().padding(horizontal = kGroupedHorizontalPadding),
@@ -555,17 +485,17 @@ private fun TabStrip(
         Row(Modifier.fillMaxWidth().horizontalScroll(scroll)) {
             groups.forEachIndexed { groupIndex, group ->
                 if (groupIndex > 0) Spacer(Modifier.width(groupGap))
-                group.tabs.forEachIndexed { index, tab ->
+                val onScreen = group.id == activeGroupId
+                group.windows.forEachIndexed { index, window ->
                     if (index > 0) Spacer(Modifier.width(kGroupedGap))
                     TabCard(
-                        tab = tab,
+                        window = window,
                         width = tabWidth,
-                        shape = clusterShape(index, group.tabs.size),
-                        focused = tab.key == focusedKey,
-                        showing = visible.contains(tab.key),
-                        onSelect = { onSelect(tab) },
-                        onSplit = { onSplit(tab) },
-                        onClose = { onClose(tab) },
+                        shape = clusterShape(index, group.windows.size),
+                        focused = onScreen && window.id == focusedWindowId,
+                        onScreen = onScreen,
+                        onSelect = { onSelect(window) },
+                        onClose = { onClose(window) },
                     )
                 }
             }
@@ -587,22 +517,20 @@ private fun clusterShape(index: Int, count: Int): RoundedCornerShape {
 
 @Composable
 private fun TabCard(
-    tab: TabItem,
+    window: PaneWindow,
     width: Dp,
     shape: RoundedCornerShape,
     focused: Boolean,
-    showing: Boolean,
+    onScreen: Boolean,
     onSelect: () -> Unit,
-    onSplit: () -> Unit,
     onClose: () -> Unit,
 ) {
     val colors = appColors
     GroupedCard(
         shape = shape,
         onTap = onSelect,
-        onLongPress = onSplit,
         padding = PaddingValues(start = 9.dp, end = 1.dp),
-        background = if (showing) {
+        background = if (onScreen) {
             {
                 Box(
                     Modifier
@@ -615,19 +543,24 @@ private fun TabCard(
         },
         modifier = Modifier.width(width).height(kTabHeight),
     ) {
-        TabContent(tab, focused, showing, onClose)
+        TabContent(window, focused, onScreen, onClose)
     }
 }
 
 @Composable
-private fun TabContent(tab: TabItem, focused: Boolean, showing: Boolean, onClose: () -> Unit) {
+private fun TabContent(
+    window: PaneWindow,
+    focused: Boolean,
+    onScreen: Boolean,
+    onClose: () -> Unit,
+) {
     val colors = appColors
-    val session = tab.session
-    val foreground = if (showing) colors.textPrimary else colors.textSecondary
+    val session = sessionOf(window.ref)
+    val foreground = if (onScreen) colors.textPrimary else colors.textSecondary
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Icon(
-            tabIcon(tab),
+            windowIcon(window.ref),
             contentDescription = null,
             tint = if (focused) colors.accent else colors.textMuted,
             modifier = Modifier.size(16.dp),
@@ -635,7 +568,7 @@ private fun TabContent(tab: TabItem, focused: Boolean, showing: Boolean, onClose
         Spacer(Modifier.width(7.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                tab.title,
+                windowTitle(window.ref),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = TextStyle(
@@ -662,7 +595,7 @@ private fun TabContent(tab: TabItem, focused: Boolean, showing: Boolean, onClose
                 )
                 Spacer(Modifier.width(5.dp))
                 Text(
-                    tabKindLabel(tab),
+                    windowKindLabel(window.ref),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = TextStyle(
@@ -684,53 +617,24 @@ private fun TabContent(tab: TabItem, focused: Boolean, showing: Boolean, onClose
     }
 }
 
-@Composable
-private fun PickerBody(tab: TabItem) {
-    val navigator = LocalNavigator.current
-
-    fun open(host: Host, files: Boolean) {
-        if (VaultStore.identityFor(host) == null) {
-            AppToasts.show("Assign a user to this system first", actionLabel = "Edit") {
-                navigator.push { HostEditorPage(host) }
-            }
-            return
-        }
-        val session = if (files) {
-            SessionManager.sessions.filterIsInstance<HostSession>()
-                .firstOrNull { it.host.id == host.id && it.isConnected }
-                ?: SessionManager.open(host)
-        } else {
-            SessionManager.open(host)
-        }
-        if (files) session.sftpTabOpen = true
-        Workspace.resolvePicker(
-            tab.groupId,
-            paneKey(session.id, if (files) PaneKind.FILES else PaneKind.SHELL),
-        )
-    }
-
-    ConnectionPicker(
-        onOpenShell = { host -> open(host, files = false) },
-        onOpenSftp = { host -> open(host, files = true) },
-        onOpenSerial = { entry ->
-            val session = SessionManager.openSerial(entry)
-            Workspace.resolvePicker(tab.groupId, paneKey(session.id, PaneKind.SHELL))
-        },
-    )
+private fun windowTitle(ref: PaneRef): String = when (ref) {
+    is PaneRef.Picker -> "New window"
+    is PaneRef.Local -> "This device"
+    else -> sessionOf(ref)?.title ?: "Session"
 }
 
-private fun tabIcon(tab: TabItem): ImageVector = when {
-    tab.kind == PaneKind.PICK -> Icons.Filled.Add
-    tab.kind == PaneKind.SHELL -> Icons.Outlined.Terminal
-    tab.session == null -> Icons.Filled.Computer
-    else -> Icons.Filled.FolderOpen
+private fun windowIcon(ref: PaneRef): ImageVector = when (ref) {
+    is PaneRef.Picker -> Icons.Filled.Add
+    is PaneRef.Local -> Icons.Filled.Computer
+    is PaneRef.Files -> Icons.Filled.FolderOpen
+    is PaneRef.Shell -> Icons.Outlined.Terminal
 }
 
-private fun tabKindLabel(tab: TabItem): String = when {
-    tab.kind == PaneKind.PICK -> "Choose"
-    tab.kind == PaneKind.SHELL -> "Shell"
-    tab.session == null -> "Files"
-    else -> "SFTP"
+private fun windowKindLabel(ref: PaneRef): String = when (ref) {
+    is PaneRef.Picker -> "Choose"
+    is PaneRef.Local -> "Files"
+    is PaneRef.Files -> "SFTP"
+    is PaneRef.Shell -> "Shell"
 }
 
 internal fun statusColor(colors: QAppColors, session: TerminalSession): Color = when (session.state) {
