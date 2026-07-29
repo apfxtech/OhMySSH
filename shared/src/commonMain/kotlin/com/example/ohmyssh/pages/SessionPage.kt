@@ -246,7 +246,7 @@ fun SessionPage(groupId: String) {
         ) {
             Column(Modifier.fillMaxSize()) {
                 Spacer(Modifier.height(8.dp))
-                if (groups.size > 1) {
+                if (groups.sumOf { it.windows.size } > 1) {
                     TabStrip(
                         groups = groups,
                         activeGroupId = Workspace.activeGroupId,
