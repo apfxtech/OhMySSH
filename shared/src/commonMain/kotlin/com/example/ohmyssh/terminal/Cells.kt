@@ -40,10 +40,14 @@ class TermLine(cols: Int) {
     }
 
     fun resize(cols: Int) {
-        if (cols == size) return
-        chars = chars.copyOf(cols).also { arr -> for (i in size until cols) arr[i] = ' ' }
-        fg = fg.copyOf(cols).also { arr -> for (i in size until cols) arr[i] = CellColor.DEFAULT }
-        bg = bg.copyOf(cols).also { arr -> for (i in size until cols) arr[i] = CellColor.DEFAULT }
+        // Read the old width once: [size] is derived from chars, so it changes
+        // under the loops below and would leave the grown cells holding the
+        // zeros copyOf pads with — NUL text on an ANSI-black background.
+        val old = chars.size
+        if (cols == old) return
+        chars = chars.copyOf(cols).also { arr -> for (i in old until cols) arr[i] = ' ' }
+        fg = fg.copyOf(cols).also { arr -> for (i in old until cols) arr[i] = CellColor.DEFAULT }
+        bg = bg.copyOf(cols).also { arr -> for (i in old until cols) arr[i] = CellColor.DEFAULT }
         attrs = attrs.copyOf(cols)
     }
 

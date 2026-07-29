@@ -1,5 +1,6 @@
 package com.example.ohmyssh
 
+import com.example.ohmyssh.terminal.CellColor
 import com.example.ohmyssh.terminal.TerminalEmulator
 import com.example.ohmyssh.terminal.Utf8StreamDecoder
 import kotlin.test.Test
@@ -67,6 +68,24 @@ class TerminalTest {
         assertEquals("alt", terminal.lineText(0))
         terminal.write("[?1049l")
         assertEquals("main", terminal.lineText(0))
+    }
+
+    @Test
+    fun growingTheGridLeavesBlankDefaultCells() {
+        val terminal = TerminalEmulator(cols = 20, rows = 4)
+        terminal.write("hello")
+        terminal.resize(60, 8)
+
+        terminal.snapshot(0) { lines, _ ->
+            val line = lines[0]
+            assertEquals(60, line.size)
+            for (x in 20 until 60) {
+                assertEquals(' ', line.chars[x])
+                assertEquals(CellColor.DEFAULT, line.bg[x])
+                assertEquals(CellColor.DEFAULT, line.fg[x])
+            }
+            assertEquals("hello", line.textRange(0, line.size).trimEnd())
+        }
     }
 
     @Test
