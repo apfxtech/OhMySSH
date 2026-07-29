@@ -5,8 +5,8 @@ import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -75,13 +75,11 @@ fun NavigationHost(
                 val count = navigator.entries.size
                 val pushing = count >= lastCount[0]
                 lastCount[0] = count
-                if (pushing) {
-                    (slideInHorizontally(tween(260)) { it / 3 } + fadeIn(tween(220))) togetherWith
-                        (slideOutHorizontally(tween(260)) { -it / 6 } + fadeOut(tween(220)))
-                } else {
-                    (slideInHorizontally(tween(260)) { -it / 6 } + fadeIn(tween(220))) togetherWith
-                        (slideOutHorizontally(tween(260)) { it / 3 } + fadeOut(tween(220)))
-                }
+                (fadeIn(tween(200)) + scaleIn(tween(260), if (pushing) 0.985f else 1.015f))
+                    .togetherWith(
+                        fadeOut(tween(160)) +
+                            scaleOut(tween(260), if (pushing) 1.015f else 0.985f),
+                    )
             },
             contentKey = { it?.id ?: -1L },
         ) { entry ->
