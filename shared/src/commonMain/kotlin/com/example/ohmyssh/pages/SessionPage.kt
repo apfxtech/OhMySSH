@@ -4,9 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -50,6 +48,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.TextStyle
@@ -324,15 +325,22 @@ private fun WindowHost(window: PaneWindow, focused: Boolean, split: Boolean) {
                 color = frame,
                 shape = RoundedCornerShape(kGroupedInnerRadius),
             )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) { Workspace.focusWindow(window.id) },
+            .focusOnPress(focused) { Workspace.focusWindow(window.id) },
     ) {
         if (split) WindowCaption(window, focused)
         Box(Modifier.weight(1f).fillMaxWidth()) { WindowBody(window) }
     }
 }
+
+private fun Modifier.focusOnPress(focused: Boolean, onFocus: () -> Unit): Modifier =
+    pointerInput(focused) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (!focused && event.type == PointerEventType.Press) onFocus()
+            }
+        }
+    }
 
 @Composable
 private fun WindowCaption(window: PaneWindow, focused: Boolean) {
