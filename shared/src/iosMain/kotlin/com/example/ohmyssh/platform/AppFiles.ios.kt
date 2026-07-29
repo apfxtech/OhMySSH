@@ -9,6 +9,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.dataWithBytes
+import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
 import platform.posix.memcpy
 
@@ -29,7 +30,7 @@ actual object AppFiles {
         NSFileManager.defaultManager.fileExistsAtPath(path)
 
     actual fun readBytes(path: String): ByteArray {
-        val data = NSData.create(contentsOfFile = path)
+        val data = NSData.dataWithContentsOfFile(path)
             ?: throw IllegalStateException("Cannot read $path")
         val length = data.length.toInt()
         if (length == 0) return ByteArray(0)

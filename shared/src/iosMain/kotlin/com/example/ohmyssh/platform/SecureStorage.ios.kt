@@ -1,6 +1,5 @@
 package com.example.ohmyssh.platform
 
-import kotlinx.cinterop.CFTypeRefVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
@@ -10,9 +9,10 @@ import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import platform.CoreFoundation.CFDictionaryAddValue
 import platform.CoreFoundation.CFDictionaryCreateMutable
-import platform.CoreFoundation.CFDictionaryRef
+import platform.CoreFoundation.CFMutableDictionaryRef
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFTypeRef
+import platform.CoreFoundation.CFTypeRefVar
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFBooleanTrue
 import platform.Foundation.CFBridgingRelease
@@ -42,33 +42,32 @@ private const val SERVICE = "com.example.ohmyssh"
 actual object SecureStorage {
     actual suspend fun write(key: String, value: String) {
         delete(key)
-        memScoped {
-            val query = CFDictionaryCreateMutable(kCFAllocatorDefault, 5, null, null)
-            CFDictionaryAddValue(query, kSecClass, kSecClassGenericPassword)
-            CFDictionaryAddValue(query, kSecAttrService, retained(SERVICE))
-            CFDictionaryAddValue(query, kSecAttrAccount, retained(key))
-            CFDictionaryAddValue(query, kSecValueData, retainedData(value))
-            CFDictionaryAddValue(query, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
-            val status = SecItemAdd(query, null)
-            CFRelease(query)
-            if (status != errSecSuccess) {
-                throw IllegalStateException("Keychain write failed ($status)")
-            }
+
+        val retained = mutableListOf<CFTypeRef?>()
+        val query = query(key, retained)
+        val data = CFBridgingRetain(value.toNSData()).also { retained.add(it) }
+        CFDictionaryAddValue(query, kSecValueData, data)
+        CFDictionaryAddValue(query, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
+
+        val status = SecItemAdd(query, null)
+        release(query, retained)
+        if (status != errSecSuccess) {
+            throw IllegalStateException("Keychain write failed ($status)")
         }
     }
 
     actual suspend fun read(key: String): String? = memScoped {
-        val query = CFDictionaryCreateMutable(kCFAllocatorDefault, 4, null, null)
-        CFDictionaryAddValue(query, kSecClass, kSecClassGenericPassword)
-        CFDictionaryAddValue(query, kSecAttrService, retained(SERVICE))
-        CFDictionaryAddValue(query, kSecAttrAccount, retained(key))
+        val retained = mutableListOf<CFTypeRef?>()
+        val query = query(key, retained)
         CFDictionaryAddValue(query, kSecReturnData, kCFBooleanTrue)
-        val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(query, result.ptr)
-        CFRelease(query)
+
+        val holder = alloc<CFTypeRefVar>()
+        val status = SecItemCopyMatching(query, holder.ptr)
+        release(query, retained)
+
         when (status) {
             errSecSuccess -> {
-                val data = CFBridgingRelease(result.value) as? NSData ?: return null
+                val data = CFBridgingRelease(holder.value) as? NSData ?: return@memScoped null
                 NSString.create(data = data, encoding = NSUTF8StringEncoding) as String?
             }
             errSecItemNotFound -> null
@@ -77,12 +76,10 @@ actual object SecureStorage {
     }
 
     actual suspend fun delete(key: String) {
-        val query = CFDictionaryCreateMutable(kCFAllocatorDefault, 3, null, null)
-        CFDictionaryAddValue(query, kSecClass, kSecClassGenericPassword)
-        CFDictionaryAddValue(query, kSecAttrService, retained(SERVICE))
-        CFDictionaryAddValue(query, kSecAttrAccount, retained(key))
+        val retained = mutableListOf<CFTypeRef?>()
+        val query = query(key, retained)
         val status = SecItemDelete(query)
-        CFRelease(query)
+        release(query, retained)
         if (status != errSecSuccess && status != errSecItemNotFound) {
             throw IllegalStateException("Keychain delete failed ($status)")
         }
@@ -90,17 +87,32 @@ actual object SecureStorage {
 
     actual suspend fun containsKey(key: String): Boolean = read(key) != null
 
-    private fun retained(value: String): CFTypeRef? = CFBridgingRetain(value as NSString)
+    private fun query(key: String, retained: MutableList<CFTypeRef?>): CFMutableDictionaryRef? {
+        val query = CFDictionaryCreateMutable(kCFAllocatorDefault, 5, null, null)
+        CFDictionaryAddValue(query, kSecClass, kSecClassGenericPassword)
+        CFDictionaryAddValue(
+            query,
+            kSecAttrService,
+            CFBridgingRetain(SERVICE as NSString).also { retained.add(it) },
+        )
+        CFDictionaryAddValue(
+            query,
+            kSecAttrAccount,
+            CFBridgingRetain(key as NSString).also { retained.add(it) },
+        )
+        return query
+    }
 
-    private fun retainedData(value: String): CFTypeRef? {
-        val bytes = value.encodeToByteArray()
-        val data = if (bytes.isEmpty()) {
-            NSData()
-        } else {
-            bytes.usePinned { pinned ->
-                NSData.dataWithBytes(pinned.addressOf(0), bytes.size.toULong())
-            }
+    private fun release(query: CFMutableDictionaryRef?, retained: List<CFTypeRef?>) {
+        CFRelease(query)
+        for (item in retained) CFRelease(item)
+    }
+
+    private fun String.toNSData(): NSData {
+        val bytes = encodeToByteArray()
+        if (bytes.isEmpty()) return NSData()
+        return bytes.usePinned { pinned ->
+            NSData.dataWithBytes(pinned.addressOf(0), bytes.size.toULong())
         }
-        return CFBridgingRetain(data)
     }
 }
