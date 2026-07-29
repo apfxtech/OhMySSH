@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -103,7 +102,7 @@ private val baudRates = listOf(
 
 private val kSideBySideWidth = 700.dp
 
-private val kTabHeight = 42.dp
+private val kTabHeight = 32.dp
 private val kMinTabWidth = 136.dp
 
 private fun sessionOf(ref: PaneRef): TerminalSession? =
@@ -555,63 +554,34 @@ private fun TabContent(
     onClose: () -> Unit,
 ) {
     val colors = appColors
-    val session = sessionOf(window.ref)
     val foreground = if (onScreen) colors.textPrimary else colors.textSecondary
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Icon(
             windowIcon(window.ref),
-            contentDescription = null,
+            contentDescription = windowKindLabel(window.ref),
             tint = if (focused) colors.accent else colors.textMuted,
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(15.dp),
         )
         Spacer(Modifier.width(7.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                windowTitle(window.ref),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = TextStyle(
-                    color = foreground,
-                    fontSize = 12.5.sp,
-                    lineHeight = 15.sp,
-                    fontWeight = if (focused) FontWeight.W700 else FontWeight.W500,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(
-                            when {
-                                session == null -> colors.info
-                                session.isConnected -> colors.success
-                                session.state == SessionState.CONNECTING -> colors.warning
-                                else -> colors.textMuted
-                            },
-                        ),
-                )
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    windowKindLabel(window.ref),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(
-                        color = colors.textMuted,
-                        fontSize = 10.sp,
-                        lineHeight = 11.sp,
-                    ),
-                )
-            }
-        }
-        IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
+        Text(
+            windowTitle(window.ref),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+            style = TextStyle(
+                color = foreground,
+                fontSize = 12.5.sp,
+                lineHeight = 15.sp,
+                fontWeight = if (focused) FontWeight.W700 else FontWeight.W500,
+            ),
+        )
+        IconButton(onClick = onClose, modifier = Modifier.size(22.dp)) {
             Icon(
                 Icons.Filled.Close,
                 contentDescription = "Close",
                 tint = colors.textMuted,
-                modifier = Modifier.size(14.dp),
+                modifier = Modifier.size(13.dp),
             )
         }
     }
