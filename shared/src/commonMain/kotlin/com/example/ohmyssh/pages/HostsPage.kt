@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Dns
@@ -46,7 +47,10 @@ import com.example.ohmyssh.data.newId
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.serial.SerialDeviceEntry
 import com.example.ohmyssh.serial.SerialRegistry
+import com.example.ohmyssh.session.PaneKind
 import com.example.ohmyssh.session.SessionManager
+import com.example.ohmyssh.session.Workspace
+import com.example.ohmyssh.session.paneKey
 import com.example.ohmyssh.ssh.osColorValue
 import com.example.ohmyssh.ssh.osIconAsset
 import com.example.ohmyssh.theme.appColors
@@ -77,7 +81,7 @@ fun HostsPage() {
             return
         }
         val session = SessionManager.open(host)
-        navigator.push { SessionPage(session.id) }
+        navigator.push { SessionPage(paneKey(session.id, PaneKind.SHELL)) }
     }
 
     QScaffold(
@@ -111,54 +115,68 @@ fun HostsPage() {
             )
         },
     ) {
-        if (buckets.isEmpty() && serialDevices.isEmpty()) {
-            QEmptyView(
-                icon = Icons.Outlined.Dns,
-                title = "No systems yet",
-                message = "Add a system to connect over SSH and browse it over SFTP.",
-                action = {
-                    Button(
-                        onClick = { navigator.push { HostEditorPage(null) } },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.accent,
-                            contentColor = colors.onAccent,
-                        ),
-                    ) { Text("Add system") }
-                },
-            )
-        } else {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = 9.dp, bottom = 20.dp),
-            ) {
-                for ((group, hosts) in buckets) {
-                    Spacer(Modifier.height(5.dp))
-                    GroupedCardList(
-                        title = group?.name ?: "Ungrouped",
-                        items = hosts,
-                        onTap = { host -> { connect(host) } },
-                        itemBuilder = { host -> HostRow(host) },
-                    )
-                    Spacer(Modifier.height(5.dp))
-                }
-                if (serialDevices.isNotEmpty()) {
-                    Spacer(Modifier.height(5.dp))
-                    GroupedCardList(
-                        title = "Serial devices",
-                        items = serialDevices,
-                        onTap = { entry ->
-                            {
-                                val session = SessionManager.openSerial(entry)
-                                navigator.push { SessionPage(session.id) }
-                            }
-                        },
-                        itemBuilder = { entry -> SerialRow(entry) },
-                    )
-                    Spacer(Modifier.height(5.dp))
-                }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(top = 9.dp, bottom = 20.dp),
+        ) {
+            if (buckets.isEmpty() && serialDevices.isEmpty()) {
+                QEmptyView(
+                    icon = Icons.Outlined.Dns,
+                    title = "No systems yet",
+                    message = "Add a system to connect over SSH and browse it over SFTP.",
+                    action = {
+                        Button(
+                            onClick = { navigator.push { HostEditorPage(null) } },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.accent,
+                                contentColor = colors.onAccent,
+                            ),
+                        ) { Text("Add system") }
+                    },
+                )
             }
+            for ((group, hosts) in buckets) {
+                Spacer(Modifier.height(5.dp))
+                GroupedCardList(
+                    title = group?.name ?: "Ungrouped",
+                    items = hosts,
+                    onTap = { host -> { connect(host) } },
+                    itemBuilder = { host -> HostRow(host) },
+                )
+                Spacer(Modifier.height(5.dp))
+            }
+            if (serialDevices.isNotEmpty()) {
+                Spacer(Modifier.height(5.dp))
+                GroupedCardList(
+                    title = "Serial devices",
+                    items = serialDevices,
+                    onTap = { entry ->
+                        {
+                            val session = SessionManager.openSerial(entry)
+                            navigator.push {
+                                SessionPage(paneKey(session.id, PaneKind.SHELL))
+                            }
+                        }
+                    },
+                    itemBuilder = { entry -> SerialRow(entry) },
+                )
+                Spacer(Modifier.height(5.dp))
+            }
+            Spacer(Modifier.height(5.dp))
+            GroupedCardList(
+                title = "This device",
+                items = listOf(Unit),
+                onTap = {
+                    {
+                        val pane = Workspace.requestLocal()
+                        navigator.push { SessionPage(paneKey(pane.id, PaneKind.FILES)) }
+                    }
+                },
+                itemBuilder = { LocalFilesRow() },
+            )
+            Spacer(Modifier.height(5.dp))
         }
     }
 }
@@ -251,6 +269,42 @@ private fun SerialRow(entry: SerialDeviceEntry) {
                 contentDescription = "Edit",
                 tint = colors.textMuted,
                 modifier = Modifier.size(18.dp),
+            )
+        }
+        Icon(
+            Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = colors.textMuted,
+            modifier = Modifier.padding(start = 2.dp).size(16.dp),
+        )
+    }
+}
+
+@Composable
+private fun LocalFilesRow() {
+    val colors = appColors
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        QIconBadge(icon = Icons.Filled.Folder, color = colors.accent)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Local files",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(
+                    color = colors.textPrimary,
+                    fontSize = 14.5.sp,
+                    lineHeight = 17.4.sp,
+                    fontWeight = FontWeight.W600,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Browse this device and drag files across",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 14.4.sp),
             )
         }
         Icon(

@@ -108,6 +108,7 @@ object SessionManager {
     }
 
     suspend fun closeAll() {
+        Workspace.reset()
         val open = sessions.toList()
         for (session in open) FileBrowsers.forgetGroup("${session.id}:")
         sessions.clear()

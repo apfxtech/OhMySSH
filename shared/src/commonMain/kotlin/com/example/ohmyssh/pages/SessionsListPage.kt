@@ -41,7 +41,9 @@ import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.serial.SerialSession
 import com.example.ohmyssh.serial.serialPortName
+import com.example.ohmyssh.session.PaneKind
 import com.example.ohmyssh.session.SessionManager
+import com.example.ohmyssh.session.paneKey
 import com.example.ohmyssh.session.TerminalSession
 import com.example.ohmyssh.ssh.HostSession
 import com.example.ohmyssh.ssh.osColorValue
@@ -98,7 +100,13 @@ fun SessionsListPage() {
             ) {
                 GroupedCardList(
                     items = sessions.toList(),
-                    onTap = { session -> { navigator.push { SessionPage(session.id) } } },
+                    onTap = { session ->
+                        {
+                            navigator.push {
+                                SessionPage(paneKey(session.id, PaneKind.SHELL))
+                            }
+                        }
+                    },
                     itemBuilder = { session -> SessionRow(session) },
                 )
             }
