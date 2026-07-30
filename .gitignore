@@ -19,3 +19,8 @@ DerivedData/
 
 # Icon generator byproduct
 artwork/__pycache__/
+
+# Release artifacts and signing material from .github/scripts/build/
+/dist/
+androidApp/key.properties
+*.jks

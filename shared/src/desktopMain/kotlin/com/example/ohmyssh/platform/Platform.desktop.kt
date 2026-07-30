@@ -10,6 +10,3 @@ actual val appPlatform: AppPlatform = when {
 
 actual fun epochMicros(): Long =
     System.currentTimeMillis() * 1000 + (System.nanoTime() / 1000) % 1000
-
-actual fun releaseTag(): String =
-    System.getProperty("OHMYSSH_RELEASE_TAG") ?: System.getenv("OHMYSSH_RELEASE_TAG") ?: ""

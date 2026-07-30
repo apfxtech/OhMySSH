@@ -8,5 +8,3 @@ actual val appPlatform: AppPlatform = AppPlatform.IOS
 
 @OptIn(ExperimentalForeignApi::class)
 actual fun epochMicros(): Long = (NSDate().timeIntervalSince1970 * 1_000_000).toLong()
-
-actual fun releaseTag(): String = ""

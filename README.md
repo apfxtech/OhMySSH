@@ -54,6 +54,36 @@ open iosApp/iosApp.xcodeproj             # iOS (build & run from Xcode)
 ./gradlew :shared:packageDistributionForCurrentOS   # dmg / msi / deb
 ```
 
+## Release
+
+Pushing a tag that contains a semantic version — `1.6.1`, `v1.6.1`,
+`alpha-1.6.1` — builds all five platforms and publishes a GitHub prerelease
+([.github/workflows/auto-release.yml](.github/workflows/auto-release.yml)):
+
+```
+ohmyssh_1.6.1_android_universal.apk    signed release APK (no ABI splits: no native code)
+ohmyssh_1.6.1_ios_arm64.ipa            unsigned IPA
+ohmyssh_1.6.1_linux_x64                self-extracting executable, bundled runtime
+ohmyssh_1.6.1_macos_arm64.dmg          drag-to-Applications DMG
+ohmyssh_1.6.1_windows_x64.exe          self-extracting executable, bundled runtime
+ohmyssh_1.6.1_windows_x64_raw.zip      the same app image, unwrapped
+```
+
+Every asset comes from a script under
+[.github/scripts/build/](.github/scripts/build/) that also runs by hand:
+
+```
+OHMYSSH_VERSION_NAME=1.6.1 .github/scripts/build/macos.sh
+```
+
+`ohmysshVersionName` / `ohmysshVersionCode` in `gradle.properties` are the
+version of record — they set the Android version, the desktop bundle version and
+the version the app itself reports. The workflow overrides them from the tag,
+then commits the tag's version back to the default branch. Android signing needs
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
+`ANDROID_KEY_PASSWORD` as repository secrets; without them the Android job
+fails. Local release builds fall back to the debug key.
+
 ## App icon
 
 `artwork/app-icon-source.png` is the only file to edit; everything else is
