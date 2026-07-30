@@ -103,6 +103,7 @@ kotlin {
             dependencies {
                 implementation(libs.androidx.activity.compose)
                 implementation(libs.usb.serial.android)
+                implementation(libs.bouncycastle.provider)
             }
         }
 

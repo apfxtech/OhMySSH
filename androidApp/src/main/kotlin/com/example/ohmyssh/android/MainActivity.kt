@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AndroidApp.init(applicationContext)
+        AndroidApp.attach(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 

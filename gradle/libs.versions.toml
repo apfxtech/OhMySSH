@@ -16,6 +16,8 @@ kotlinx-serialization = "1.11.0"
 cryptography = "0.6.0"
 multiplatform-settings = "1.3.0"
 sshj = "0.40.0"
+# Kept in lockstep with the copy sshj already drags in transitively.
+bouncycastle = "1.80.2"
 slf4j = "2.0.16"
 jserialcomm = "2.11.4"
 usb-serial = "3.9.0"
@@ -48,6 +50,9 @@ multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", vers
 # SSH/SFTP on the JVM targets (Android + the three desktops).
 sshj = { module = "com.hierynomus:sshj", version.ref = "sshj" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+# Runtime-scope under sshj, so named here only to make the provider class
+# reachable from Kotlin — Android has to swap it in by hand. See AndroidApp.
+bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 
 # Serial: jSerialComm covers the desktops, usb-serial-for-android goes through
 # the Android USB host API. iOS gets neither — same split as the Flutter app.

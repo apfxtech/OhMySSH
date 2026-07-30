@@ -120,14 +120,14 @@ fun SettingsPage(onLocked: () -> Unit) {
             subtitle = "Merge systems and users from a file",
             onTap = {
                 scope.launch {
-                    val picked = FilePick.pickFile("Select a vault file") ?: return@launch
-                    val password = promptForPassword(
-                        message = "Enter the master password of the vault file you picked. " +
-                            "Matching entries are updated, new ones are added.",
-                        actionLabel = "Import",
-                    ) ?: return@launch
-
                     try {
+                        val picked = FilePick.pickFile("Select a vault file") ?: return@launch
+                        val password = promptForPassword(
+                            message = "Enter the master password of the vault file you picked. " +
+                                "Matching entries are updated, new ones are added.",
+                            actionLabel = "Import",
+                        ) ?: return@launch
+
                         val summary = VaultStore.importVault(
                             fileText = picked.bytes.decodeToString(),
                             password = password,
@@ -229,15 +229,15 @@ fun SettingsPage(onLocked: () -> Unit) {
             subtitle = "Merge past connections from a file",
             onTap = {
                 scope.launch {
-                    val picked = FilePick.pickFile("Select a history file") ?: return@launch
-                    val password = promptForPassword(
-                        message = "Enter the master password of the vault the history " +
-                            "file was exported beside. New connections are added, " +
-                            "existing ones are kept.",
-                        actionLabel = "Import",
-                    ) ?: return@launch
-
                     try {
+                        val picked = FilePick.pickFile("Select a history file") ?: return@launch
+                        val password = promptForPassword(
+                            message = "Enter the master password of the vault the history " +
+                                "file was exported beside. New connections are added, " +
+                                "existing ones are kept.",
+                            actionLabel = "Import",
+                        ) ?: return@launch
+
                         val added = HistoryStore.importHistory(
                             fileText = picked.bytes.decodeToString(),
                             password = password,
