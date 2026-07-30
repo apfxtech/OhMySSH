@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Radar
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -101,6 +102,11 @@ fun HostsPage() {
                 title = "Systems",
                 subtitle = "${VaultStore.hosts.size} saved",
                 actions = {
+                    QPageAppBarAction(
+                        tooltip = "Scan network",
+                        icon = Icons.Outlined.Radar,
+                        onPressed = { navigator.push { NetworkPage() } },
+                    )
                     QPageAppBarAction(
                         tooltip = "New group",
                         icon = Icons.Outlined.CreateNewFolder,

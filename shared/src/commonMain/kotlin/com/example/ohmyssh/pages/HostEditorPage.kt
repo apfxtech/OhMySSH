@@ -71,17 +71,23 @@ import kotlinx.coroutines.launch
 
 private const val CREATE_SENTINEL = " new"
 
+/**
+ * Edits [host], or creates a system when it is null. [draft] pre-fills that new
+ * system without saving anything — the network scan hands over a discovered
+ * address this way, and the user still has to press save.
+ */
 @Composable
-fun HostEditorPage(host: Host?) {
+fun HostEditorPage(host: Host?, draft: Host? = null) {
     val colors = appColors
     val navigator = LocalNavigator.current
     val scope = rememberCoroutineScope()
     val isNew = host == null
+    val initial = host ?: draft
 
-    var label by rememberSaveable(host?.id) { mutableStateOf(host?.label ?: "") }
-    var hostname by rememberSaveable(host?.id) { mutableStateOf(host?.hostname ?: "") }
-    var port by rememberSaveable(host?.id) { mutableStateOf("${host?.port ?: 22}") }
-    var note by rememberSaveable(host?.id) { mutableStateOf(host?.note ?: "") }
+    var label by rememberSaveable(host?.id) { mutableStateOf(initial?.label ?: "") }
+    var hostname by rememberSaveable(host?.id) { mutableStateOf(initial?.hostname ?: "") }
+    var port by rememberSaveable(host?.id) { mutableStateOf("${initial?.port ?: 22}") }
+    var note by rememberSaveable(host?.id) { mutableStateOf(initial?.note ?: "") }
     var identityId by rememberSaveable(host?.id) { mutableStateOf(host?.identityId) }
     var groupId by rememberSaveable(host?.id) { mutableStateOf(host?.groupId) }
     var knownHostKey by rememberSaveable(host?.id) { mutableStateOf(host?.knownHostKey) }
