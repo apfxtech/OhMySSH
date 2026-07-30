@@ -32,6 +32,7 @@ shared/        Kotlin Multiplatform module — all app code and Compose UI
   iosMain/       Apple file/keychain/crypto actuals (SSH engine pending)
 androidApp/    Android application (activity + session foreground service)
 iosApp/        Xcode project embedding the shared framework
+artwork/       app icon source + the generator that fans it out per platform
 ```
 
 Key dependencies: sshj (SSH/SFTP on JVM targets), jSerialComm + 
@@ -52,3 +53,19 @@ open iosApp/iosApp.xcodeproj             # iOS (build & run from Xcode)
 ./gradlew :shared:desktopTest            # tests (vault format compatibility)
 ./gradlew :shared:packageDistributionForCurrentOS   # dmg / msi / deb
 ```
+
+## App icon
+
+`artwork/app-icon-source.png` is the only file to edit; everything else is
+generated from it and checked in:
+
+```
+python3 artwork/generate-app-icons.py    # needs Pillow
+```
+
+Each platform gets the shape it expects, so no system ever masks an
+already-rounded image: Android an adaptive icon (background colour + foreground
++ monochrome for themed icons), iOS a full-bleed 1024 with dark and tinted
+variants, macOS an `.icns` on Apple's inset grid, Windows a multi-size `.ico`,
+Linux a PNG. Under 40px the "SSH" lettering is dropped, since it only smudges at
+that size. `artwork/preview-*.png` show the result under each system's mask.

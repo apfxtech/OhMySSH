@@ -108,7 +108,14 @@ compose.desktop {
             packageName = "ohmyssh"
             packageVersion = "1.0.0"
             description = "Simple, reliable SSH/SFTP client"
-            macOS { bundleID = "com.example.ohmyssh" }
+            // Regenerate all three with artwork/generate-app-icons.py; jpackage
+            // wants a per-platform container and rejects a bare PNG on mac/Windows.
+            macOS {
+                bundleID = "com.example.ohmyssh"
+                iconFile.set(rootProject.file("artwork/desktop/app-icon-macos.icns"))
+            }
+            windows { iconFile.set(rootProject.file("artwork/desktop/app-icon-windows.ico")) }
+            linux { iconFile.set(rootProject.file("artwork/desktop/app-icon-linux.png")) }
         }
     }
 }
