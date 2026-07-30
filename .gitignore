@@ -2,6 +2,8 @@
 .gradle/
 build/
 **/build/
+# Without this, **/build/ swallows the release scripts auto-release.yml calls
+!.github/scripts/build/
 local.properties
 
 # IDE
