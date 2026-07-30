@@ -3,6 +3,7 @@ package com.example.ohmyssh.data
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.ohmyssh.platform.AppFiles
 import com.example.ohmyssh.platform.FilePick
 
 class ImportSummary(
@@ -55,6 +56,14 @@ object VaultStore {
         data = VaultData()
         HistoryStore.close()
         isUnlocked = false
+    }
+
+    fun deleteVault() {
+        val target = requireVault()
+        // The history goes first, while its key still exists to name the file.
+        HistoryStore.wipe()
+        if (AppFiles.exists(target.path)) AppFiles.delete(target.path)
+        lock()
     }
 
     suspend fun verifyPassword(password: String): Boolean = try {

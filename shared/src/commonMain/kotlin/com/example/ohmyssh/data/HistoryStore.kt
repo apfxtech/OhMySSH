@@ -1,6 +1,7 @@
 package com.example.ohmyssh.data
 
 import androidx.compose.runtime.mutableStateListOf
+import com.example.ohmyssh.platform.FilePick
 import com.example.ohmyssh.platform.epochMillis
 import com.example.ohmyssh.services.Log
 import kotlinx.coroutines.CoroutineScope
@@ -78,6 +79,39 @@ object HistoryStore {
         persist()
         vault = null
         connections.clear()
+    }
+
+    fun wipe() {
+        connections.clear()
+        vault?.let { runCatching { it.deleteSidecar(kHistoryFileName) } }
+        vault = null
+    }
+
+    suspend fun exportHistory(fileName: String = "ohmyssh"): String? {
+        persist()
+        val bytes = vault?.readSidecarFileBytes(kHistoryFileName) ?: return null
+        return FilePick.saveFile(name = fileName, extension = "history", bytes = bytes)
+    }
+
+    suspend fun importHistory(fileText: String, password: String): Int {
+        val clear = Vault.decryptSidecar(fileText, password, kHistoryFormat)
+        val parsed = json.parseToJsonElement(clear.decodeToString()) as? JsonObject
+            ?: throw VaultException("History file has an unexpected shape")
+        val incoming = parsed.arr("connections")
+            ?.filterIsInstance<JsonObject>()
+            ?.map(ConnectionRecord::fromJson)
+            .orEmpty()
+
+        val known = connections.mapTo(HashSet()) { it.id }
+        val fresh = incoming.filter { it.id !in known }
+        if (fresh.isEmpty()) return 0
+
+        val merged = (connections.toList() + fresh).sortedByDescending { it.startedAt }
+        connections.clear()
+        connections.addAll(merged)
+        trim()
+        requestSave()
+        return fresh.size
     }
 
     fun begin(

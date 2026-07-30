@@ -15,12 +15,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardList
@@ -46,6 +49,7 @@ import com.example.ohmyssh.components.QPageAppBar
 import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.data.AutoLogin
 import com.example.ohmyssh.data.AutoLoginException
+import com.example.ohmyssh.data.HistoryStore
 import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.data.WrongPasswordException
 import com.example.ohmyssh.navigation.LocalNavigator
@@ -67,6 +71,13 @@ private class SettingsAction(
     val title: String,
     val subtitle: String,
     val onTap: () -> Unit,
+)
+
+private class DangerArea(
+    val title: String,
+    val subtitle: String,
+    val enabled: Boolean,
+    val onDelete: () -> Unit,
 )
 
 @Composable
@@ -171,17 +182,122 @@ fun SettingsPage(onLocked: () -> Unit) {
             icon = Icons.Outlined.Lock,
             color = Color(0xFFE85858),
             title = "Lock now",
-            subtitle = "Closes every session and clears the vault from memory",
+            subtitle = "Closes every session, turns off auto-unlock and locks the app",
             onTap = {
                 scope.launch {
                     val confirmed = confirmDestructive(
-                        title = "Lock the vault?",
-                        message = "Open sessions will be closed.",
+                        title = "Lock the app?",
+                        message = "Open sessions will be closed and auto-unlock turned off.",
                         actionLabel = "Lock",
                     )
                     if (!confirmed) return@launch
                     SessionManager.closeAll()
+                    AutoLogin.disable()
                     VaultStore.lock()
+                    onLocked()
+                }
+            },
+        ),
+    )
+
+    val historyActions = listOf(
+        SettingsAction(
+            icon = Icons.Outlined.FileUpload,
+            color = Color(0xFF589DFF),
+            title = "Export history",
+            subtitle = "Save an encrypted copy of past connections",
+            onTap = {
+                scope.launch {
+                    if (HistoryStore.connections.isEmpty()) {
+                        AppToasts.show("No history to export")
+                        return@launch
+                    }
+                    try {
+                        val path = HistoryStore.exportHistory() ?: return@launch
+                        AppToasts.show("Exported to $path")
+                    } catch (failure: Exception) {
+                        Log.error("settings", "history export failed", failure)
+                        AppToasts.show("Export failed: $failure")
+                    }
+                }
+            },
+        ),
+        SettingsAction(
+            icon = Icons.Outlined.FileDownload,
+            color = Color(0xFF2ED34A),
+            title = "Import history",
+            subtitle = "Merge past connections from a file",
+            onTap = {
+                scope.launch {
+                    val picked = FilePick.pickFile("Select a history file") ?: return@launch
+                    val password = promptForPassword(
+                        message = "Enter the master password of the vault the history " +
+                            "file was exported beside. New connections are added, " +
+                            "existing ones are kept.",
+                        actionLabel = "Import",
+                    ) ?: return@launch
+
+                    try {
+                        val added = HistoryStore.importHistory(
+                            fileText = picked.bytes.decodeToString(),
+                            password = password,
+                        )
+                        AppToasts.show(
+                            when (added) {
+                                0 -> "Nothing new to import"
+                                1 -> "Imported 1 connection"
+                                else -> "Imported $added connections"
+                            },
+                        )
+                    } catch (_: WrongPasswordException) {
+                        Log.warn("settings", "history import: wrong password for the chosen file")
+                        AppToasts.show("Wrong password for that file")
+                    } catch (failure: Exception) {
+                        Log.error("settings", "history import failed", failure)
+                        AppToasts.show("Import failed: $failure")
+                    }
+                }
+            },
+        ),
+    )
+
+    val dangerAreas = listOf(
+        DangerArea(
+            title = "Connection history",
+            subtitle = "Every past connection and the commands run over it",
+            enabled = HistoryStore.past.isNotEmpty(),
+            onDelete = {
+                scope.launch {
+                    val confirmed = confirmDestructive(
+                        title = "Clear connection history?",
+                        message = "Every past connection and the commands " +
+                            "recorded over it will be forgotten.",
+                        actionLabel = "Clear",
+                    )
+                    if (!confirmed) return@launch
+                    HistoryStore.clearAll()
+                    AppToasts.show("Connection history cleared")
+                }
+            },
+        ),
+        DangerArea(
+            title = "Vault",
+            subtitle = "The vault file with every system, user, password and key",
+            enabled = true,
+            onDelete = {
+                scope.launch {
+                    val confirmed = confirmDestructive(
+                        title = "Delete the vault?",
+                        message = "The vault file and its history are deleted from " +
+                            "this device for good, and open sessions are closed. " +
+                            "Without an export there is no way back.",
+                        actionLabel = "Delete",
+                    )
+                    if (!confirmed) return@launch
+                    SessionManager.closeAll()
+                    AutoLogin.disable()
+                    VaultStore.deleteVault()
+                    AppToasts.show("Vault deleted")
                     onLocked()
                 }
             },
@@ -196,36 +312,18 @@ fun SettingsPage(onLocked: () -> Unit) {
                 .padding(vertical = 10.dp),
         ) {
             GroupedCardList(
-                title = "Theme",
-                items = QThemeMode.entries,
-                onTap = { mode -> { QAppThemeController.applyThemeMode(mode) } },
-                itemBuilder = { mode ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            mode.label,
-                            modifier = Modifier.weight(1f),
-                            style = TextStyle(
-                                color = colors.textPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.W500,
-                            ),
-                        )
-                        Icon(
-                            if (QAppThemeController.themeMode == mode) {
-                                Icons.Filled.CheckCircle
-                            } else {
-                                Icons.Filled.Circle
-                            },
-                            contentDescription = null,
-                            tint = if (QAppThemeController.themeMode == mode) {
-                                colors.accent
-                            } else {
-                                colors.textMuted
-                            },
-                            modifier = Modifier.size(21.dp),
-                        )
-                    }
-                },
+                title = "Vault",
+                items = actions,
+                onTap = { action -> action.onTap },
+                itemBuilder = { action -> ActionRow(action) },
+            )
+
+            Spacer(Modifier.height(14.dp))
+            GroupedCardList(
+                title = "History",
+                items = historyActions,
+                onTap = { action -> action.onTap },
+                itemBuilder = { action -> ActionRow(action) },
             )
 
             Spacer(Modifier.height(14.dp))
@@ -288,21 +386,58 @@ fun SettingsPage(onLocked: () -> Unit) {
 
             Spacer(Modifier.height(14.dp))
             GroupedCardList(
-                title = "Vault",
-                items = actions,
-                onTap = { action -> action.onTap },
-                itemBuilder = { action -> ActionRow(action) },
+                title = "Theme",
+                items = QThemeMode.entries,
+                onTap = { mode -> { QAppThemeController.applyThemeMode(mode) } },
+                itemBuilder = { mode ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            mode.label,
+                            modifier = Modifier.weight(1f),
+                            style = TextStyle(
+                                color = colors.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.W500,
+                            ),
+                        )
+                        Icon(
+                            if (QAppThemeController.themeMode == mode) {
+                                Icons.Filled.CheckCircle
+                            } else {
+                                Icons.Filled.Circle
+                            },
+                            contentDescription = null,
+                            tint = if (QAppThemeController.themeMode == mode) {
+                                colors.accent
+                            } else {
+                                colors.textMuted
+                            },
+                            modifier = Modifier.size(21.dp),
+                        )
+                    }
+                },
             )
 
             Spacer(Modifier.height(14.dp))
-            Text(
-                "The vault file holds every system, user, password and private key, " +
-                    "encrypted with your master password. Exporting copies that file as-is — " +
-                    "the other device only needs the password. Auto-unlock keeps a copy of the " +
-                    "password in the device keystore; it is never written to the vault or to " +
-                    "an export.",
-                modifier = Modifier.padding(horizontal = 26.dp),
-                style = TextStyle(color = colors.textMuted, fontSize = 11.5.sp, lineHeight = 16.sp),
+            GroupedCardList(
+                header = {
+                    Text(
+                        "Danger zone",
+                        style = TextStyle(
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.W600,
+                            color = colors.danger,
+                        ),
+                        modifier = Modifier.padding(
+                            start = 12.dp,
+                            top = 2.dp,
+                            end = 12.dp,
+                            bottom = 6.dp,
+                        ),
+                    )
+                },
+                items = dangerAreas,
+                itemBuilder = { area -> DangerRow(area) },
             )
 
             Spacer(Modifier.height(18.dp))
@@ -363,6 +498,40 @@ private fun AutoLoginRow(
                 checkedTrackColor = colors.accent,
             ),
         )
+    }
+}
+
+@Composable
+private fun DangerRow(area: DangerArea) {
+    val colors = appColors
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                area.title,
+                style = TextStyle(
+                    color = colors.textPrimary,
+                    fontSize = 14.sp,
+                    lineHeight = 16.8.sp,
+                    fontWeight = FontWeight.W500,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                area.subtitle,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 14.4.sp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        IconButton(onClick = area.onDelete, enabled = area.enabled) {
+            Icon(
+                Icons.Filled.DeleteOutline,
+                contentDescription = "Delete",
+                tint = if (area.enabled) colors.danger else colors.textMuted,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 

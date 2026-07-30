@@ -84,6 +84,12 @@ class Vault private constructor(
             return parsePayload(clear)
         }
 
+        suspend fun decryptSidecar(raw: String, password: String, format: String): ByteArray {
+            val envelope = readEnvelope(raw, format)
+            val (key, _, _) = deriveEnvelopeKey(envelope, password)
+            return decrypt(envelope, key)
+        }
+
         internal fun parsePayload(clear: ByteArray): VaultData {
             val parsed = json.parseToJsonElement(clear.decodeToString())
             if (parsed !is JsonObject) throw VaultException("Vault payload has an unexpected shape")
@@ -109,7 +115,7 @@ class Vault private constructor(
             }
             if (decoded !is JsonObject) throw VaultException("Vault file has an unexpected shape")
             if (decoded.str(FIELD_FORMAT) != format) {
-                throw VaultException("Not an ohmyssh vault file")
+                throw VaultException("Not an $format file")
             }
             val version = decoded.int(FIELD_VERSION) ?: 0
             if (version > kVaultVersion) {
@@ -192,6 +198,12 @@ class Vault private constructor(
     fun deleteSidecar(fileName: String) {
         val target = siblingPath(fileName)
         if (AppFiles.exists(target)) AppFiles.delete(target)
+    }
+
+    fun readSidecarFileBytes(fileName: String): ByteArray? {
+        val target = siblingPath(fileName)
+        if (!AppFiles.exists(target)) return null
+        return AppFiles.readBytes(target)
     }
 
     private fun siblingPath(fileName: String): String {

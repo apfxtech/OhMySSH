@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Terminal
@@ -78,23 +77,6 @@ fun SessionsListPage() {
                     else -> null
                 },
                 actions = {
-                    if (past.isNotEmpty()) {
-                        QPageAppBarAction(
-                            tooltip = "Clear history",
-                            icon = Icons.Filled.DeleteSweep,
-                            onPressed = {
-                                scope.launch {
-                                    val confirmed = confirmDestructive(
-                                        title = "Clear connection history?",
-                                        message = "Every past connection and the commands " +
-                                            "recorded over it will be forgotten.",
-                                        actionLabel = "Clear",
-                                    )
-                                    if (confirmed) HistoryStore.clearAll()
-                                }
-                            },
-                        )
-                    }
                     if (sessions.isNotEmpty()) {
                         QPageAppBarAction(
                             tooltip = "Close all",

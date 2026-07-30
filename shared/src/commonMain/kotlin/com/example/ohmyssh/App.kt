@@ -93,7 +93,10 @@ fun App() {
                             RootTab.USERS -> IdentitiesPage()
                             RootTab.SESSIONS -> SessionsListPage()
                             RootTab.SETTINGS -> SettingsPage(
-                                onLocked = { tab = RootTab.SYSTEMS },
+                                onLocked = {
+                                    tab = RootTab.SYSTEMS
+                                    vaultExists = VaultStore.vaultExists()
+                                },
                             )
                         }
                     }
