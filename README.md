@@ -1,101 +1,97 @@
-# ohmyssh (Kotlin Multiplatform)
+# ohmyssh
 
-Simple, reliable SSH/SFTP client. A 1:1 port of the Flutter app to Kotlin
-Multiplatform + Compose Multiplatform.
+<p align="center">
+  <img src="artwork/app-icon-source.png" alt="ohmyssh" width="96" height="96">
+</p>
 
-Targets: **Android · iOS · macOS · Windows · Linux**.
+<p align="center">
+  <strong>A simple, reliable SSH/SFTP client on every platform you own.</strong>
+  <br>
+  Terminal, file browser, serial console, LAN scan and an encrypted vault of
+  systems and users — one codebase, five platforms.
+</p>
 
-## Compatibility with the Flutter app
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.0.0-4C8DFF">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3-7F52FF">
+  <img alt="Compose" src="https://img.shields.io/badge/Compose%20Multiplatform-1.11-4285F4">
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows%20%7C%20Linux-blue">
+  <img alt="License" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-lightgrey">
+</p>
 
-* **Vault format is identical** — `ohmyssh.vault` (JSON envelope,
-  PBKDF2-HMAC-SHA256 · 120 000 rounds · AES-256-GCM). A vault created by the
-  Flutter app opens here with the same master password, and vice versa.
-* **Vault location is identical per platform**, so an existing vault is picked
-  up in place:
-  * macOS: `~/Library/Application Support/com.example.ohmyssh/ohmyssh.vault`
-  * Linux: `$XDG_DATA_HOME/com.example.ohmyssh/ohmyssh.vault`
-  * Windows: `%APPDATA%\com.example\ohmyssh\ohmyssh.vault`
-  * Android/iOS: the app's private files / Application Support directory
-* **Host key pins are identical** — OpenSSH-style `SHA256:<base64>` over the
-  host key blob, stored in the vault, so pinned systems stay pinned.
+Keep every system you connect to in one encrypted vault, open a shell or an
+SFTP browser on any of them, and get the same app on your phone, your laptop
+and your desktop.
 
-## Architecture
+> SSH does not work on iOS yet — the native transport is still being wired up,
+> so a connect attempt there fails with a clear reason. Serial is desktop and
+> Android only: iOS has no path to a USB adapter.
 
-```
-shared/        Kotlin Multiplatform module — all app code and Compose UI
-  commonMain/    models · vault crypto · store · session/ssh/serial logic ·
-                 terminal emulator · every page and component
-  jvmShared/     code shared by Android + desktop (sshj SSH engine, JDK crypto)
-  androidMain/   USB-host serial scanner, Keystore secure storage
-  desktopMain/   jSerialComm + /dev sweep serial scanner, desktop keychains,
-                 desktop entry point (macOS/Windows/Linux)
-  iosMain/       Apple file/keychain/crypto actuals (SSH engine pending)
-androidApp/    Android application (activity + session foreground service)
-iosApp/        Xcode project embedding the shared framework
-artwork/       app icon source + the generator that fans it out per platform
-```
+## Highlights
 
-Key dependencies: sshj (SSH/SFTP on JVM targets), jSerialComm + 
-usb-serial-for-android (serial), cryptography-kotlin (vault crypto),
-FileKit (file dialogs), multiplatform-settings (preferences). The terminal is
-an in-repo VT100/xterm emulator rendered with Compose.
+- **One encrypted vault for everything** — systems, users, passwords, private keys and host key pins in a single `ohmyssh.vault` file: PBKDF2-HMAC-SHA256 over 120 000 rounds, AES-256-GCM.
+- **Systems and users kept apart** — a user holds a login plus its password or key, systems point at one, so a rotated credential is edited once. Groups become sections on the systems list.
+- **Host keys pinned on first connect** — OpenSSH-style `SHA256:<base64>` fingerprints stored in the vault; a changed key stops the connection instead of shrugging.
+- **A real terminal** — VT100/xterm emulation with 10 000 lines of scrollback, alternate screen and full attribute and colour handling.
+- **Sessions as panes** — several live sessions at once, split into two windows, each showing a shell, an SFTP browser or the local filesystem.
+- **SFTP that works like a file manager** — browse, upload, download, rename, delete, mkdir, multi-select, progress and cancel, plus a text editor that saves straight back to the server.
+- **Command history without a keylogger** — commands are read off the screen when Enter lands, so line editing, history recall and pastes are already resolved; anything the shell chose not to echo is never recorded.
+- **LAN sweep** — ping and ARP the local network and stream in hosts, IPs, MACs and round-trip times as they answer, then connect to one straight from the table.
+- **Serial console** — saved devices with baud, data bits, parity, stop bits, flow control and DTR/RTS, pinned to a physical adapter by USB vendor, product and serial number.
+- **Auto-unlock** — the master password goes into the platform keystore (Keychain, Android Keystore, desktop keychains) when you ask for it, and nowhere else.
 
-Serial support mirrors the Flutter app's current state: the layer is wired up
-end to end but still being finished; iOS has no serial at all (platform
-limitation).
+## Feature tour
 
-## Build
+| Area | What it does |
+| --- | --- |
+| Systems | Saved hosts with port, user, group, notes and a pinned host key; connect over SSH or open straight into SFTP. |
+| Users | Reusable identities — a login plus password or private key, passphrase included. |
+| Sessions | Every open connection in one list, split panes, reconnect, close one or close all. |
+| Terminal | VT100/xterm emulation, scrollback, alternate screen, keyboard and paste handling. |
+| Files | Remote SFTP and the local filesystem side by side, transfers with progress, text editor with binary and size guards. |
+| Network | LAN scan into a sortable table of host, IPv4/IPv6, MAC and ping, with saved systems and this device marked. |
+| Serial | USB serial devices with their full line settings, remembered per adapter. |
+| History | Past connections with duration and outcome, and the commands run over each of them. |
+| System info | Load, CPU count and usage, memory, disk and uptime, probed over the live session. |
+| Settings | Theme, startup behaviour, auto-unlock, master password change, vault and history import/export, delete. |
 
-```
-./gradlew :shared:run                    # desktop app (current OS)
-./gradlew :androidApp:assembleDebug      # Android APK
-open iosApp/iosApp.xcodeproj             # iOS (build & run from Xcode)
-./gradlew :shared:desktopTest            # tests (vault format compatibility)
-./gradlew :shared:packageDistributionForCurrentOS   # dmg / msi / deb
-```
+## Vault
 
-## Release
+One file holds everything, and it lives where the platform keeps app data:
 
-Pushing a tag that contains a semantic version — `1.6.1`, `v1.6.1`,
-`alpha-1.6.1` — builds all five platforms and publishes a GitHub prerelease
-([.github/workflows/auto-release.yml](.github/workflows/auto-release.yml)):
+* macOS: `~/Library/Application Support/com.example.ohmyssh/ohmyssh.vault`
+* Linux: `$XDG_DATA_HOME/com.example.ohmyssh/ohmyssh.vault`
+* Windows: `%APPDATA%\com.example\ohmyssh\ohmyssh.vault`
+* Android/iOS: the app's private files / Application Support directory
 
-```
-ohmyssh_1.6.1_android_universal.apk    signed release APK (no ABI splits: no native code)
-ohmyssh_1.6.1_ios_arm64.ipa            unsigned IPA
-ohmyssh_1.6.1_linux_x64                self-extracting executable, bundled runtime
-ohmyssh_1.6.1_macos_arm64.dmg          drag-to-Applications DMG
-ohmyssh_1.6.1_windows_x64.exe          self-extracting executable, bundled runtime
-ohmyssh_1.6.1_windows_x64_raw.zip      the same app image, unwrapped
-```
+Settings can export an encrypted copy of the vault or the history, import one
+back, change the master password (the vault is re-encrypted in place) or delete
+everything.
 
-Every asset comes from a script under
-[.github/scripts/build/](.github/scripts/build/) that also runs by hand:
+## Install
 
-```
-OHMYSSH_VERSION_NAME=1.6.1 .github/scripts/build/macos.sh
-```
+Take the asset for your platform from the **Releases** page:
 
-`ohmysshVersionName` / `ohmysshVersionCode` in `gradle.properties` are the
-version of record — they set the Android version, the desktop bundle version and
-the version the app itself reports. The workflow overrides them from the tag,
-then commits the tag's version back to the default branch. Android signing needs
-`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
-`ANDROID_KEY_PASSWORD` as repository secrets; without them the Android job
-fails. Local release builds fall back to the debug key.
+| Asset | Platform |
+| --- | --- |
+| `ohmyssh_<version>_android_universal.apk` | Android — signed release APK, no ABI splits |
+| `ohmyssh_<version>_ios_arm64.ipa` | iOS — unsigned IPA |
+| `ohmyssh_<version>_linux_x64` | Linux — self-extracting executable, bundled runtime |
+| `ohmyssh_<version>_macos_arm64.dmg` | macOS — drag-to-Applications DMG |
+| `ohmyssh_<version>_windows_x64.exe` | Windows — self-extracting executable, bundled runtime |
+| `ohmyssh_<version>_windows_x64_raw.zip` | Windows — the same app image, unwrapped |
 
-## App icon
+If macOS reports the app as damaged or quarantined, clear the attribute:
 
-`artwork/app-icon-source.png` is the only file to edit; everything else is
-generated from it and checked in:
-
-```
-python3 artwork/generate-app-icons.py    # needs Pillow
+```bash
+sudo xattr -dr com.apple.quarantine /Applications/ohmyssh.app
 ```
 
-Each platform gets the shape it expects, so no system ever masks an
-already-rounded image: Android an adaptive icon (background colour + foreground
-+ monochrome for themed icons), iOS a full-bleed 1024 with dark and tinted
-variants, macOS an `.icns` on Apple's inset grid, Windows a multi-size `.ico`,
-Linux a PNG. Under 40px the "SSH" lettering is dropped, since it only smudges at
-that size. `artwork/preview-*.png` show the result under each system's mask.
+## License
+
+ohmyssh is licensed under the
+[PolyForm Noncommercial License 1.0.0](./LICENSE.md).
+
+Personal projects, hobby use, research, education and noncommercial
+organizations are all permitted. Commercial use is not — get in touch if that is
+what you need.
