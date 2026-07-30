@@ -181,7 +181,6 @@ fun SessionPage(groupId: String) {
                             QPageAppBarAction(
                                 tooltip = "Reconnect",
                                 icon = Icons.Filled.Autorenew,
-                                native = true,
                                 onPressed = { scope.launch { SessionManager.reconnect(session) } },
                             )
                         }
@@ -189,14 +188,12 @@ fun SessionPage(groupId: String) {
                             tooltip = "New group",
                             icon = Icons.Filled.Add,
                             iconSize = 22.dp,
-                            native = true,
                             onPressed = { Workspace.openGroup(PaneRef.Picker) },
                         )
                         if (session is SerialSession) {
                             QPageAppBarAction(
                                 tooltip = "Baud rate",
                                 icon = Icons.Filled.Speed,
-                                native = true,
                                 onPressed = {
                                     scope.launch {
                                         val picked = pickFromList(
@@ -214,7 +211,6 @@ fun SessionPage(groupId: String) {
                             QPageAppBarAction(
                                 tooltip = "System info",
                                 icon = Icons.Filled.Speed,
-                                native = true,
                                 onPressed = { scope.launch { showSessionInfoDialog(session) } },
                             )
                         }

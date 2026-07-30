@@ -181,7 +181,6 @@ fun FileEditorPage(source: FileSource, path: String, name: String) {
                             tooltip = if (source.isLocal) "Save" else "Save to server",
                             icon = Icons.Outlined.CloudUpload,
                             iconSize = 21.dp,
-                            native = true,
                             onPressed = if (dirty && !saving) {
                                 {
                                     scope.launch {
