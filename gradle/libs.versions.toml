@@ -20,6 +20,8 @@ slf4j = "2.0.16"
 jserialcomm = "2.11.4"
 usb-serial = "3.9.0"
 filekit = "0.8.8"
+# Kept in lockstep with the copy FileKit already drags in transitively.
+jna = "5.15.0"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
@@ -54,6 +56,9 @@ usb-serial-android = { module = "com.github.mik3y:usb-serial-for-android", versi
 
 # File open/save dialogs on all targets.
 filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekit" }
+
+# Objective-C bridge for pushing the theme onto the macOS window chrome.
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

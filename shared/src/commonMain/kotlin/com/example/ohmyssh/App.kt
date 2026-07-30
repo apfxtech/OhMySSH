@@ -22,6 +22,7 @@ import com.example.ohmyssh.pages.IdentitiesPage
 import com.example.ohmyssh.pages.LockPage
 import com.example.ohmyssh.pages.SessionsListPage
 import com.example.ohmyssh.pages.SettingsPage
+import com.example.ohmyssh.platform.applyPlatformTheme
 import com.example.ohmyssh.services.Log
 import com.example.ohmyssh.session.SessionManager
 import com.example.ohmyssh.theme.OhMySshTheme
@@ -34,6 +35,7 @@ import com.example.ohmyssh.widgets.RootTab
 
 suspend fun bootstrap(): Boolean {
     QAppThemeController.loadThemeMode()
+    applyPlatformTheme(QAppThemeController.themeMode)
     AutoLogin.isAvailable()
 
     val exists = VaultStore.vaultExists()

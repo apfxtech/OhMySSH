@@ -17,6 +17,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import com.example.ohmyssh.platform.appSettings
+import com.example.ohmyssh.platform.applyPlatformTheme
 
 enum class QThemeMode(val label: String) {
     SYSTEM("Match system"),
@@ -50,6 +51,7 @@ object QAppThemeController {
         if (mode == themeMode) return
         themeMode = mode
         appSettings().putString(PREF_THEME_MODE, mode.wireName)
+        applyPlatformTheme(mode)
     }
 }
 
