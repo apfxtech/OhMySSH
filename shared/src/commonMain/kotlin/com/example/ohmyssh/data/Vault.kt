@@ -101,14 +101,14 @@ class Vault private constructor(
             return Triple(VaultCrypto.deriveKey(password, salt, iterations), salt, iterations)
         }
 
-        internal fun readEnvelope(raw: String): JsonObject {
+        internal fun readEnvelope(raw: String, format: String = kVaultFormat): JsonObject {
             val decoded = try {
                 json.parseToJsonElement(raw)
             } catch (_: Exception) {
                 throw VaultException("Vault file is not valid JSON")
             }
             if (decoded !is JsonObject) throw VaultException("Vault file has an unexpected shape")
-            if (decoded.str(FIELD_FORMAT) != kVaultFormat) {
+            if (decoded.str(FIELD_FORMAT) != format) {
                 throw VaultException("Not an ohmyssh vault file")
             }
             val version = decoded.int(FIELD_VERSION) ?: 0
@@ -141,11 +141,16 @@ class Vault private constructor(
 
     fun save(data: VaultData) {
         val plain = json.encodeToString(JsonObject.serializer(), data.toJson()).encodeToByteArray()
+        // Write-then-rename so a crash mid-write cannot leave a truncated vault.
+        AppFiles.writeTextAtomic(path, seal(kVaultFormat, plain))
+    }
+
+    private fun seal(format: String, clear: ByteArray): String {
         val nonce = VaultCrypto.randomBytes(12)
-        val (cipherText, mac) = VaultCrypto.encrypt(key, nonce, plain)
+        val (cipherText, mac) = VaultCrypto.encrypt(key, nonce, clear)
 
         val envelope = buildJsonObject {
-            put(FIELD_FORMAT, kVaultFormat)
+            put(FIELD_FORMAT, format)
             put(FIELD_VERSION, kVaultVersion)
             put(
                 FIELD_KDF,
@@ -160,16 +165,59 @@ class Vault private constructor(
             put(FIELD_MAC, b64.encode(mac))
             put(FIELD_DATA, b64.encode(cipherText))
         }
-
-        // Write-then-rename so a crash mid-write cannot leave a truncated vault.
-        AppFiles.writeTextAtomic(path, json.encodeToString(JsonObject.serializer(), envelope))
+        return json.encodeToString(JsonObject.serializer(), envelope)
     }
 
-    suspend fun changePassword(newPassword: String) {
+    /**
+     * State this port keeps beside the vault: same envelope, same key derived
+     * from the same master password, its own file.
+     *
+     * It stays out of the vault itself deliberately. The Flutter app writes
+     * `ohmyssh.vault` too, and would drop a key it knows nothing about on its
+     * next save — so anything stored in there would survive only until the user
+     * next opened the other app. Session history also grows without bound
+     * relative to a credential list, and has no business riding along in a file
+     * that gets exported and imported.
+     */
+    fun readSidecar(fileName: String, format: String): ByteArray? {
+        val target = siblingPath(fileName)
+        if (!AppFiles.exists(target)) return null
+        return decrypt(readEnvelope(AppFiles.readText(target), format), key)
+    }
+
+    fun writeSidecar(fileName: String, format: String, clear: ByteArray) {
+        AppFiles.writeTextAtomic(siblingPath(fileName), seal(format, clear))
+    }
+
+    fun deleteSidecar(fileName: String) {
+        val target = siblingPath(fileName)
+        if (AppFiles.exists(target)) AppFiles.delete(target)
+    }
+
+    private fun siblingPath(fileName: String): String {
+        val cut = path.lastIndexOf(AppFiles.pathSeparator)
+        if (cut < 0) return fileName
+        return path.substring(0, cut + AppFiles.pathSeparator.length) + fileName
+    }
+
+    /**
+     * Reads with the old key first, so this cannot reset a forgotten password.
+     * [sidecars] are name-to-format pairs read out under the old key and written
+     * back under the new one, since nothing else would ever be able to open
+     * them again.
+     */
+    suspend fun changePassword(newPassword: String, sidecars: List<Pair<String, String>> = emptyList()) {
         val data = read()
+        val carried = sidecars.mapNotNull { (fileName, format) ->
+            val clear = runCatching { readSidecar(fileName, format) }.getOrNull() ?: return@mapNotNull null
+            Triple(fileName, format, clear)
+        }
+
         val newSalt = VaultCrypto.randomBytes(16)
         key = VaultCrypto.deriveKey(newPassword, newSalt, iterations)
         salt = newSalt
+
         save(data)
+        for ((fileName, format, clear) in carried) writeSidecar(fileName, format, clear)
     }
 }

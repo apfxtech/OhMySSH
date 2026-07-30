@@ -4,11 +4,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.ohmyssh.data.ConnectionKind
+import com.example.ohmyssh.data.ConnectionOutcome
+import com.example.ohmyssh.data.ConnectionRecord
+import com.example.ohmyssh.data.HistoryStore
 import com.example.ohmyssh.data.Host
 import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.serial.SerialDeviceEntry
 import com.example.ohmyssh.serial.SerialRegistry
 import com.example.ohmyssh.serial.SerialSession
+import com.example.ohmyssh.serial.serialPortName
 import com.example.ohmyssh.services.Log
 import com.example.ohmyssh.ssh.HostSession
 import kotlinx.coroutines.CoroutineScope
@@ -40,14 +45,18 @@ object SessionManager {
         session.onHostKeyPinned = { fingerprint ->
             currentHost(host.id)?.let { VaultStore.saveHost(it.copy(knownHostKey = fingerprint)) }
         }
+
+        val record = beginRecord(session)
+
         session.onProfiled = { profile ->
+            record.osId = profile.osId
             currentHost(host.id)?.let {
                 VaultStore.saveHost(it.copy(osId = profile.osId, osPretty = profile.osPretty))
             }
         }
 
         Log.info("sessions", "opening ${host.endpoint}")
-        return adopt(session)
+        return adopt(session, record)
     }
 
     fun openSerial(entry: SerialDeviceEntry): SerialSession {
@@ -55,7 +64,7 @@ object SessionManager {
         if (existing is SerialSession) {
             activate(existing.id)
             if (existing.state == SessionState.CLOSED || existing.state == SessionState.FAILED) {
-                scope.launch { existing.connect() }
+                scope.launch { reconnect(existing) }
             }
             return existing
         }
@@ -72,16 +81,73 @@ object SessionManager {
         }
 
         Log.info("sessions", "opening serial ${entry.device.path}")
-        return adopt(session)
+        return adopt(session, beginRecord(session))
     }
 
-    private fun <T : TerminalSession> adopt(session: T): T {
+    private fun <T : TerminalSession> adopt(session: T, record: ConnectionRecord): T {
+        follow(session, record)
+        session.commands.attach()
+
         sessions.add(session)
         activeId = session.id
         onSessionsChanged?.invoke()
 
         scope.launch { session.connect() }
         return session
+    }
+
+    private fun follow(session: TerminalSession, record: ConnectionRecord) {
+        session.commands.onCommand = { command ->
+            record.add(command)
+            HistoryStore.requestSave()
+        }
+
+        session.onStateChanged = { state ->
+            when (state) {
+                SessionState.FAILED -> HistoryStore.end(
+                    record,
+                    ConnectionOutcome.FAILED,
+                    error = session.error?.toString(),
+                )
+                SessionState.CLOSED -> HistoryStore.end(record, ConnectionOutcome.DISCONNECTED)
+                else -> {}
+            }
+        }
+    }
+
+    private fun beginRecord(session: TerminalSession): ConnectionRecord = when (session) {
+        is HostSession -> HistoryStore.begin(
+            sessionId = session.id,
+            kind = ConnectionKind.SSH,
+            label = session.host.displayLabel,
+            target = session.host.endpoint,
+            username = session.identity?.username,
+            hostId = session.host.id,
+            osId = session.profile?.osId ?: session.host.osId,
+        )
+        is SerialSession -> HistoryStore.begin(
+            sessionId = session.id,
+            kind = ConnectionKind.SERIAL,
+            label = session.device.displayLabel,
+            target = "${serialPortName(session.device.path)} · ${session.device.lineSettings}",
+        )
+        else -> HistoryStore.begin(
+            sessionId = session.id,
+            kind = ConnectionKind.SSH,
+            label = session.title,
+            target = session.subtitle,
+        )
+    }
+
+    suspend fun reconnect(session: TerminalSession) {
+        val previous = HistoryStore.forSession(session.id)
+        if (previous != null && previous.commands.isEmpty()) {
+            HistoryStore.reopen(previous)
+        } else {
+            previous?.let { HistoryStore.release(it) }
+            follow(session, beginRecord(session))
+        }
+        session.connect()
     }
 
     private fun currentHost(id: String): Host? = VaultStore.hosts.firstOrNull { it.id == id }
@@ -102,8 +168,7 @@ object SessionManager {
         }
         onSessionsChanged?.invoke()
 
-        session.disconnect()
-        session.dispose()
+        retire(session)
     }
 
     suspend fun closeAll() {
@@ -112,10 +177,14 @@ object SessionManager {
         sessions.clear()
         activeId = null
         onSessionsChanged?.invoke()
-        for (session in open) {
-            session.disconnect()
-            session.dispose()
-        }
+        for (session in open) retire(session)
+    }
+
+    private suspend fun retire(session: TerminalSession) {
+        session.disconnect()
+        session.dispose()
+        session.commands.detach()
+        HistoryStore.forSession(session.id)?.let { HistoryStore.release(it) }
     }
 
     internal fun notifyChanged() {

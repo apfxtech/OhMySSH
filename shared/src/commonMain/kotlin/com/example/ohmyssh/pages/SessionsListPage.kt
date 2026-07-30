@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Usb
@@ -38,7 +40,12 @@ import com.example.ohmyssh.components.QIconBadgeSvg
 import com.example.ohmyssh.components.QPageAppBar
 import com.example.ohmyssh.components.QPageAppBarAction
 import com.example.ohmyssh.components.QScaffold
+import com.example.ohmyssh.data.ConnectionKind
+import com.example.ohmyssh.data.ConnectionOutcome
+import com.example.ohmyssh.data.ConnectionRecord
+import com.example.ohmyssh.data.HistoryStore
 import com.example.ohmyssh.navigation.LocalNavigator
+import com.example.ohmyssh.platform.formatRelative
 import com.example.ohmyssh.serial.SerialSession
 import com.example.ohmyssh.serial.serialPortName
 import com.example.ohmyssh.session.PaneRef
@@ -48,6 +55,7 @@ import com.example.ohmyssh.session.TerminalSession
 import com.example.ohmyssh.ssh.HostSession
 import com.example.ohmyssh.ssh.osColorValue
 import com.example.ohmyssh.ssh.osIconAsset
+import com.example.ohmyssh.theme.QAppColors
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.widgets.QEmptyView
 import com.example.ohmyssh.widgets.confirmDestructive
@@ -58,13 +66,35 @@ fun SessionsListPage() {
     val navigator = LocalNavigator.current
     val scope = rememberCoroutineScope()
     val sessions = SessionManager.sessions
+    val past = HistoryStore.past
 
     QScaffold(
         appBar = {
             QPageAppBar(
                 title = "Sessions",
-                subtitle = if (sessions.isEmpty()) null else "${sessions.size} open",
+                subtitle = when {
+                    sessions.isNotEmpty() -> "${sessions.size} open"
+                    past.isNotEmpty() -> "${past.size} in history"
+                    else -> null
+                },
                 actions = {
+                    if (past.isNotEmpty()) {
+                        QPageAppBarAction(
+                            tooltip = "Clear history",
+                            icon = Icons.Filled.DeleteSweep,
+                            onPressed = {
+                                scope.launch {
+                                    val confirmed = confirmDestructive(
+                                        title = "Clear connection history?",
+                                        message = "Every past connection and the commands " +
+                                            "recorded over it will be forgotten.",
+                                        actionLabel = "Clear",
+                                    )
+                                    if (confirmed) HistoryStore.clearAll()
+                                }
+                            },
+                        )
+                    }
                     if (sessions.isNotEmpty()) {
                         QPageAppBarAction(
                             tooltip = "Close all",
@@ -85,20 +115,24 @@ fun SessionsListPage() {
             )
         },
     ) {
-        if (sessions.isEmpty()) {
+        if (sessions.isEmpty() && past.isEmpty()) {
             QEmptyView(
                 icon = Icons.Filled.Terminal,
                 title = "Nothing open",
                 message = "Connect to a system to start a session.",
             )
-        } else {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = 14.dp, bottom = 20.dp),
-            ) {
+            return@QScaffold
+        }
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(top = 14.dp, bottom = 20.dp),
+        ) {
+            if (sessions.isNotEmpty()) {
                 GroupedCardList(
+                    title = if (past.isEmpty()) null else "Open",
                     items = sessions.toList(),
                     onTap = { session ->
                         {
@@ -109,6 +143,18 @@ fun SessionsListPage() {
                     itemBuilder = { session -> SessionRow(session) },
                 )
             }
+
+            if (past.isNotEmpty()) {
+                if (sessions.isNotEmpty()) Spacer(Modifier.height(18.dp))
+                GroupedCardList(
+                    title = "History",
+                    items = past,
+                    onTap = { record ->
+                        { navigator.push { CommandHistoryPage(record.id) } }
+                    },
+                    itemBuilder = { record -> HistoryRow(record) },
+                )
+            }
         }
     }
 }
@@ -116,7 +162,9 @@ fun SessionsListPage() {
 @Composable
 private fun SessionRow(session: TerminalSession) {
     val colors = appColors
+    val navigator = LocalNavigator.current
     val scope = rememberCoroutineScope()
+    val record = HistoryStore.forSession(session.id)
 
     val detail = when (session) {
         is HostSession -> "${session.statusLabel} · ${session.host.endpoint}"
@@ -166,6 +214,11 @@ private fun SessionRow(session: TerminalSession) {
                 )
             }
         }
+        if (record != null) {
+            IconButton(onClick = { navigator.push { CommandHistoryPage(record.id) } }) {
+                CommandCountIcon(record.commands.size)
+            }
+        }
         IconButton(onClick = { scope.launch { SessionManager.close(session.id) } }) {
             Icon(
                 Icons.Filled.Close,
@@ -176,3 +229,94 @@ private fun SessionRow(session: TerminalSession) {
         }
     }
 }
+
+@Composable
+private fun CommandCountIcon(count: Int) {
+    val colors = appColors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Filled.History,
+            contentDescription = "Commands",
+            tint = if (count > 0) colors.accent else colors.textMuted,
+            modifier = Modifier.size(16.dp),
+        )
+        if (count > 0) {
+            Spacer(Modifier.width(3.dp))
+            Text(
+                "$count",
+                style = TextStyle(
+                    color = colors.accent,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.W700,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoryRow(record: ConnectionRecord) {
+    val colors = appColors
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (record.kind == ConnectionKind.SERIAL) {
+            QIconBadge(icon = Icons.Filled.Usb, color = colors.info)
+        } else {
+            QIconBadgeSvg(
+                asset = osIconAsset(record.osId),
+                color = Color(osColorValue(record.osId)),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                record.label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(
+                    color = colors.textPrimary,
+                    fontSize = 14.5.sp,
+                    lineHeight = 17.4.sp,
+                    fontWeight = FontWeight.W600,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(outcomeColor(colors, record.outcome)),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    connectionSubtitle(record),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(
+                        color = colors.textMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 14.4.sp,
+                    ),
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        CommandCountIcon(record.commands.size)
+        Spacer(Modifier.width(8.dp))
+    }
+}
+
+private fun outcomeColor(colors: QAppColors, outcome: ConnectionOutcome): Color = when (outcome) {
+    ConnectionOutcome.FAILED -> colors.danger
+    ConnectionOutcome.OPEN -> colors.success
+    ConnectionOutcome.DISCONNECTED -> colors.textMuted
+}
+
+private fun connectionSubtitle(record: ConnectionRecord): String = buildList {
+    add(formatRelative(record.startedAt))
+    if (record.outcome == ConnectionOutcome.FAILED) add("failed")
+    add(record.target)
+    val count = record.commands.size
+    if (count > 0) add(if (count == 1) "1 command" else "$count commands")
+}.joinToString(" · ")

@@ -19,6 +19,12 @@ class TerminalEmulator(
     private var alt: MutableList<TermLine> = MutableList(rows) { TermLine(cols) }
     private var usingAlt = false
 
+    /// Lines that have left the top of the main grid over the session's life.
+    /// Grid row y sits at absolute row [scrolledLines] + y, which is what lets
+    /// the command log hold on to a place on screen while output scrolls under
+    /// it.
+    private var scrolledLines = 0L
+
     var revision: Long by mutableLongStateOf(0L)
         private set
 
@@ -60,8 +66,14 @@ class TerminalEmulator(
     var onResize: ((cols: Int, rows: Int, pixelWidth: Int, pixelHeight: Int) -> Unit)? = null
     var onBell: (() -> Unit)? = null
 
+    var onInput: ((String) -> Unit)? = null
+
+    var onShellSignal: ((ShellSignal) -> Unit)? = null
+
     val viewWidth: Int get() = cols
     val viewHeight: Int get() = rows
+
+    val usingAltScreen: Boolean get() = usingAlt
 
     var isMeasured: Boolean = false
         private set
@@ -76,6 +88,12 @@ class TerminalEmulator(
     private val csiParams = StringBuilder()
     private val oscBuffer = StringBuilder()
     private var oscEscape = false
+
+    fun sendKeys(data: String) {
+        if (data.isEmpty()) return
+        onInput?.invoke(data)
+        onOutput?.invoke(data)
+    }
 
     fun write(text: String) {
         lock.withLock {
@@ -141,6 +159,7 @@ class TerminalEmulator(
         val ch = if (graphics) decGraphics(raw) else raw
 
         if (pendingWrap && autowrap) {
+            grid[cursorY].wrapped = true
             cursorX = 0
             lineFeed()
         }
@@ -171,6 +190,7 @@ class TerminalEmulator(
             if (!usingAlt && scrollTop == 0) {
                 scrollback.addLast(removed)
                 if (scrollback.size > maxScrollback) scrollback.removeFirst()
+                scrolledLines++
                 grid.add(scrollBottom, TermLine(cols))
             } else {
                 removed.clear(bgColor = bg)
@@ -241,9 +261,32 @@ class TerminalEmulator(
         val payload = oscBuffer.toString()
         val split = payload.indexOf(';')
         if (split <= 0) return
+        val body = payload.substring(split + 1)
         when (payload.substring(0, split)) {
-            "0", "2" -> title = payload.substring(split + 1)
+            "0", "2" -> title = body
+            "7" -> fileUrlPath(body).takeIf { it.isNotBlank() }
+                ?.let { signal(ShellSignal.WorkingDirectory(it)) }
+            "133" -> parseSemanticPrompt(body)?.let { signal(it) }
         }
+    }
+
+    private fun parseSemanticPrompt(body: String): ShellSignal? {
+        val kind = body.firstOrNull() ?: return null
+        val rest = body.drop(1).removePrefix(";")
+        return when (kind) {
+            'A' -> ShellSignal.PromptStart
+            'B' -> ShellSignal.InputStart
+            'C' -> ShellSignal.Executing(rest.substringAfter("cmd=", "").ifEmpty { null })
+            'D' -> ShellSignal.Finished(rest.substringBefore(';').toIntOrNull())
+            else -> null
+        }
+    }
+
+    /// The lock is reentrant, so a listener is free to read the cursor and the
+    /// screen from here. That matters: a prompt mark is only worth anything
+    /// read at the exact point in the stream where it arrived.
+    private fun signal(event: ShellSignal) {
+        onShellSignal?.invoke(event)
     }
 
     private fun csi(ch: Char) {
@@ -507,6 +550,7 @@ class TerminalEmulator(
                     if (screen === main) {
                         scrollback.addLast(removed)
                         if (scrollback.size > maxScrollback) scrollback.removeFirst()
+                        scrolledLines++
                     }
                 }
             }
@@ -538,6 +582,36 @@ class TerminalEmulator(
             val cursorRow = if (clamped == 0) cursorY else cursorY + clamped
             block(lines, cursorRow)
         }
+
+    fun cursorPoint(): ScreenPoint = lock.withLock {
+        ScreenPoint(scrolledLines + cursorY, cursorX)
+    }
+
+    fun logicalLineAt(row: Long): LogicalLine? = lock.withLock {
+        if (usingAlt) return@withLock null
+        val first = lineAt(row) ?: return@withLock null
+
+        val text = StringBuilder(first.textRange(0, first.size))
+        var last = row
+        var line = first
+        // Bounded by what the emulator can hold, so a wrapped flag left set on
+        // a recycled row cannot spin this.
+        val limit = row + rows + maxScrollback
+        while (line.wrapped && last < limit) {
+            val next = lineAt(last + 1) ?: break
+            text.append(next.textRange(0, next.size))
+            line = next
+            last++
+        }
+        LogicalLine(text = text.toString(), firstRow = row, lastRow = last)
+    }
+
+    private fun lineAt(row: Long): TermLine? {
+        val gridRow = row - scrolledLines
+        if (gridRow >= 0) return main.getOrNull(gridRow.toInt())
+        val index = scrollback.size + gridRow
+        return if (index >= 0) scrollback[index.toInt()] else null
+    }
 
     fun allText(): String = lock.withLock {
         buildString {

@@ -103,12 +103,22 @@ private fun GroupTitle(title: String?, header: (@Composable () -> Unit)?) {
     )
 }
 
-private fun listShape(index: Int, last: Int): RoundedCornerShape = RoundedCornerShape(
+fun groupedListShape(index: Int, count: Int): RoundedCornerShape = RoundedCornerShape(
     topStart = if (index == 0) kGroupedOuterRadius else kGroupedInnerRadius,
     topEnd = if (index == 0) kGroupedOuterRadius else kGroupedInnerRadius,
-    bottomStart = if (index == last) kGroupedOuterRadius else kGroupedInnerRadius,
-    bottomEnd = if (index == last) kGroupedOuterRadius else kGroupedInnerRadius,
+    bottomStart = if (index == count - 1) kGroupedOuterRadius else kGroupedInnerRadius,
+    bottomEnd = if (index == count - 1) kGroupedOuterRadius else kGroupedInnerRadius,
 )
+
+fun groupedRowShape(index: Int, count: Int): RoundedCornerShape = RoundedCornerShape(
+    topStart = if (index == 0) kGroupedOuterRadius else kGroupedInnerRadius,
+    bottomStart = if (index == 0) kGroupedOuterRadius else kGroupedInnerRadius,
+    topEnd = if (index == count - 1) kGroupedOuterRadius else kGroupedInnerRadius,
+    bottomEnd = if (index == count - 1) kGroupedOuterRadius else kGroupedInnerRadius,
+)
+
+private fun listShape(index: Int, last: Int): RoundedCornerShape =
+    groupedListShape(index, last + 1)
 
 @Composable
 fun <T> GroupedCardList(

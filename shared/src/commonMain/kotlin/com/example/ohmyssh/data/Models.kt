@@ -11,6 +11,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 fun newId(): String {
@@ -23,6 +24,8 @@ internal fun JsonObject.str(key: String): String? =
     (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 internal fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull
+
+internal fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?.longOrNull
 
 internal fun JsonObject.bool(key: String): Boolean? = (this[key] as? JsonPrimitive)?.booleanOrNull
 

@@ -182,7 +182,7 @@ fun SessionPage(groupId: String) {
                                 tooltip = "Reconnect",
                                 icon = Icons.Filled.Autorenew,
                                 native = true,
-                                onPressed = { scope.launch { session.connect() } },
+                                onPressed = { scope.launch { SessionManager.reconnect(session) } },
                             )
                         }
                         QPageAppBarAction(
@@ -347,7 +347,7 @@ private fun WindowBody(window: PaneWindow) {
                 windowId = window.id,
             )
         } else {
-            ConnectView(session = session) { scope.launch { session.connect() } }
+            ConnectView(session = session) { scope.launch { SessionManager.reconnect(session) } }
         }
         return
     }
@@ -372,7 +372,7 @@ private fun WindowBody(window: PaneWindow) {
         )
         if (connecting) {
             Box(Modifier.fillMaxSize().background(colors.background)) {
-                ConnectView(session = session) { scope.launch { session.connect() } }
+                ConnectView(session = session) { scope.launch { SessionManager.reconnect(session) } }
             }
         }
     }

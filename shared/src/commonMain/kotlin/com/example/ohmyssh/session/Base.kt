@@ -18,12 +18,23 @@ data class Checkpoint(
 abstract class TerminalSession(val id: String) {
     val terminal = TerminalEmulator(maxScrollback = 10000)
 
+    val commands = CommandRecorder(terminal)
+
     abstract val title: String
 
     abstract val subtitle: String
 
-    var state: SessionState by mutableStateOf(SessionState.IDLE)
-        protected set
+    private var stateValue: SessionState by mutableStateOf(SessionState.IDLE)
+
+    var state: SessionState
+        get() = stateValue
+        protected set(value) {
+            if (stateValue == value) return
+            stateValue = value
+            onStateChanged?.invoke(value)
+        }
+
+    var onStateChanged: ((SessionState) -> Unit)? = null
 
     var error: Any? by mutableStateOf(null)
         protected set

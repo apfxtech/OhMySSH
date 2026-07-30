@@ -35,8 +35,10 @@ object VaultStore {
     fun vaultExists(): Boolean = Vault.exists()
 
     suspend fun create(password: String) {
-        vault = Vault.create(password)
+        val created = Vault.create(password)
+        vault = created
         data = VaultData()
+        HistoryStore.open(created)
         isUnlocked = true
     }
 
@@ -44,12 +46,14 @@ object VaultStore {
         val opened = Vault.open(password)
         data = opened.read()
         vault = opened
+        HistoryStore.open(opened)
         isUnlocked = true
     }
 
     fun lock() {
         vault = null
         data = VaultData()
+        HistoryStore.close()
         isUnlocked = false
     }
 
@@ -61,7 +65,12 @@ object VaultStore {
     }
 
     suspend fun changeMasterPassword(newPassword: String) {
-        requireVault().changePassword(newPassword)
+        // The history is encrypted under the same password and has to travel
+        // with it, or the new password would open the vault and nothing else.
+        requireVault().changePassword(
+            newPassword,
+            sidecars = listOf(kHistoryFileName to kHistoryFormat),
+        )
         if (AutoLogin.isEnabled()) AutoLogin.enable(newPassword)
     }
 

@@ -28,9 +28,12 @@ class TermLine(cols: Int) {
     var bg = IntArray(cols) { CellColor.DEFAULT }
     var attrs = IntArray(cols)
 
+    var wrapped = false
+
     val size: Int get() = chars.size
 
     fun clear(from: Int = 0, to: Int = size, bgColor: Int = CellColor.DEFAULT) {
+        if (from <= 0 && to >= size) wrapped = false
         for (i in from until to.coerceAtMost(size)) {
             chars[i] = ' '
             fg[i] = CellColor.DEFAULT

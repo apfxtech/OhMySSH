@@ -159,7 +159,7 @@ fun TerminalView(
     fun send(data: String) {
         if (readOnly) return
         scrollOffsetRows = 0
-        terminal.onOutput?.invoke(data)
+        terminal.sendKeys(data)
     }
 
     // The requester is not attached until the field is laid out, and a request
