@@ -36,7 +36,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
@@ -71,7 +74,25 @@ fun QTextField(
         onValueChange = { raw ->
             onValueChange(if (digitsOnly) raw.filter { it.isDigit() } else raw)
         },
-        label = { Text(label, fontSize = 14.sp) },
+        label = {
+            // M3 punches the label rect out of the outline AND the container fill,
+            // leaving a hole that shows the page background behind the field. Repaint
+            // the lower half of the label rect (the part inside the field) with the
+            // fill color so the field background stays continuous; the upper half is
+            // left transparent and the outline still breaks around the text.
+            Text(
+                label,
+                fontSize = 14.sp,
+                modifier = Modifier.drawBehind {
+                    val pad = 4.dp.toPx()
+                    drawRect(
+                        color = colors.card,
+                        topLeft = Offset(-pad, size.height / 2f),
+                        size = Size(size.width + pad * 2, size.height / 2f),
+                    )
+                },
+            )
+        },
         placeholder = hint?.let { { Text(it, fontSize = 14.sp, color = colors.textMuted) } },
         visualTransformation = if (obscure) PasswordVisualTransformation() else VisualTransformation.None,
         singleLine = obscure || maxLines == 1,

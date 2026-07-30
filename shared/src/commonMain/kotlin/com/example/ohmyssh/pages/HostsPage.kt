@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -28,6 +30,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -148,7 +151,8 @@ fun HostsPage() {
                 for ((group, hosts) in buckets) {
                     Spacer(Modifier.height(5.dp))
                     GroupedCardList(
-                        title = group?.name ?: "Ungrouped",
+                        title = if (group == null) "Ungrouped" else null,
+                        header = group?.let { saved -> { GroupHeader(saved) } },
                         items = hosts,
                         onTap = { host -> { open(host, files = false) } },
                         itemBuilder = { host -> HostRow(host) { open(host, files = true) } },
@@ -173,6 +177,41 @@ fun HostsPage() {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun GroupHeader(group: HostGroup) {
+    val colors = appColors
+    val scope = rememberCoroutineScope()
+
+    Row(
+        Modifier
+            .padding(start = 8.dp, end = 8.dp, bottom = 4.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .clickable {
+                scope.launch {
+                    val name = promptForText(
+                        title = "Rename group",
+                        label = "Group name",
+                        initial = group.name,
+                    )
+                    if (!name.isNullOrEmpty() && name != group.name) {
+                        VaultStore.saveGroup(group.copy(name = name))
+                    }
+                }
+            }
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            group.name,
+            style = TextStyle(
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.W600,
+                color = colors.textSecondary,
+            ),
+        )
     }
 }
 
