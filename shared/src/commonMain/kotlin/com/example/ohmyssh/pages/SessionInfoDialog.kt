@@ -57,10 +57,16 @@ import com.example.ohmyssh.ssh.osIconAsset
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.ui.Dialogs
+import com.example.ohmyssh.widgets.QSecretText
 import kotlin.time.Duration
 import kotlinx.coroutines.launch
 
-private class DetailRow(val label: String, val value: String, val mono: Boolean = false)
+private class DetailRow(
+    val label: String,
+    val value: String,
+    val mono: Boolean = false,
+    val secret: Boolean = false,
+)
 
 suspend fun showSessionInfoDialog(session: HostSession) {
     Dialogs.show<Unit> { dismiss ->
@@ -167,19 +173,25 @@ suspend fun showSessionInfoDialog(session: HostSession) {
                                             fontSize = 12.5.sp,
                                         ),
                                     )
-                                    SelectionContainer(Modifier.weight(1f)) {
-                                        Text(
+                                    val valueStyle = TextStyle(
+                                        color = colors.textPrimary,
+                                        fontSize = 12.5.sp,
+                                        fontFamily = if (row.mono) {
+                                            FontFamily.Monospace
+                                        } else {
+                                            FontFamily.Default
+                                        },
+                                    )
+                                    if (row.secret) {
+                                        QSecretText(
                                             row.value,
-                                            style = TextStyle(
-                                                color = colors.textPrimary,
-                                                fontSize = 12.5.sp,
-                                                fontFamily = if (row.mono) {
-                                                    FontFamily.Monospace
-                                                } else {
-                                                    FontFamily.Default
-                                                },
-                                            ),
+                                            style = valueStyle,
+                                            modifier = Modifier.weight(1f),
                                         )
+                                    } else {
+                                        SelectionContainer(Modifier.weight(1f)) {
+                                            Text(row.value, style = valueStyle)
+                                        }
                                     }
                                 }
                             },
@@ -199,7 +211,7 @@ private fun details(session: HostSession, profile: HostProfile?): List<DetailRow
     profile?.arch?.let { add(DetailRow("Architecture", it)) }
     profile?.metrics?.cpuCount?.let { add(DetailRow("CPUs", "$it")) }
     profile?.metrics?.uptime?.let { add(DetailRow("Uptime", formatUptime(it))) }
-    session.fingerprint?.let { add(DetailRow("Host key", it, mono = true)) }
+    session.fingerprint?.let { add(DetailRow("Host key", it, mono = true, secret = true)) }
 }
 
 private fun formatUptime(duration: Duration): String {

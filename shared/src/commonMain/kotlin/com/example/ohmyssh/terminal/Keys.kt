@@ -30,7 +30,7 @@ fun encodeKeyEvent(event: KeyEvent, applicationCursorKeys: Boolean): String? {
         Key.Insert -> "$ESC[2~"
         Key.Enter, Key.NumPadEnter -> "\r"
         Key.Backspace -> "\u007F"
-        Key.Tab -> if (event.isCtrlPressed) null else "\t"
+        Key.Tab -> if (event.isCtrlPressed) return null else "\t"
         Key.Escape -> ESC
         Key.F1 -> "${ESC}OP"
         Key.F2 -> "${ESC}OQ"
@@ -53,7 +53,12 @@ fun encodeKeyEvent(event: KeyEvent, applicationCursorKeys: Boolean): String? {
     if (event.isMetaPressed) return null
     if (event.isCtrlPressed) {
         val code = event.utf16CodePoint
-        val ch = if (code > 0) code.toChar().lowercaseChar() else keyToChar(event.key) ?: return null
+        // Desktop delivers Ctrl+letter with the control character already in
+        // the code point (^C == 3); mapping it as a letter would drop it.
+        if (code in 1..31) return code.toChar().toString()
+        val fromCode = (if (code > 0) code.toChar().lowercaseChar() else null)
+            ?.takeIf { it in 'a'..'z' || it in "[\\]^_ " }
+        val ch = fromCode ?: keyToChar(event.key) ?: return null
         val ctrl = when (ch) {
             in 'a'..'z' -> (ch - 'a' + 1).toChar()
             '[' -> '\u001B'

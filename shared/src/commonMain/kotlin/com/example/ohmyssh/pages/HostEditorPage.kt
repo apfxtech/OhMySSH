@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
@@ -40,6 +40,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +64,7 @@ import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.widgets.CredentialsEditor
 import com.example.ohmyssh.widgets.PickOption
 import com.example.ohmyssh.widgets.QFormLabel
+import com.example.ohmyssh.widgets.QSecretText
 import com.example.ohmyssh.widgets.QTextField
 import com.example.ohmyssh.widgets.confirmDestructive
 import com.example.ohmyssh.widgets.pickFromList
@@ -417,33 +420,37 @@ internal fun PickerCard(
 @Composable
 private fun HostKeyCard(fingerprint: String, onForget: () -> Unit) {
     val colors = appColors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(colors.card, RoundedCornerShape(12.dp))
-            .padding(start = 12.dp, top = 12.dp, end = 8.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                "Pinned on first connect",
-                style = TextStyle(color = colors.textMuted, fontSize = 12.sp),
-            )
-            Spacer(Modifier.height(4.dp))
-            SelectionContainer {
-                Text(
-                    fingerprint,
-                    style = TextStyle(
-                        color = colors.textPrimary,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                    ),
-                )
-            }
+    val clipboard = LocalClipboardManager.current
+    Column(Modifier.fillMaxWidth()) {
+        QSecretText(
+            fingerprint,
+            style = TextStyle(
+                color = colors.textPrimary,
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(colors.card, RoundedCornerShape(12.dp))
+                .padding(12.dp),
+        )
+        Spacer(Modifier.height(2.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(
+                onClick = {
+                    clipboard.setText(AnnotatedString(fingerprint))
+                    AppToasts.show("Host key copied")
+                },
+                contentPadding = PaddingValues(horizontal = 10.dp),
+                colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+                modifier = Modifier.height(32.dp),
+            ) { Text("Copy", fontSize = 13.sp) }
+            TextButton(
+                onClick = onForget,
+                contentPadding = PaddingValues(horizontal = 10.dp),
+                colors = ButtonDefaults.textButtonColors(contentColor = colors.danger),
+                modifier = Modifier.height(32.dp),
+            ) { Text("Forget", fontSize = 13.sp) }
         }
-        TextButton(
-            onClick = onForget,
-            colors = ButtonDefaults.textButtonColors(contentColor = colors.danger),
-        ) { Text("Forget") }
     }
 }

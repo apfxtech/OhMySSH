@@ -144,7 +144,10 @@ fun TerminalView(
     val cellLayout = remember(fontSize, density) {
         measurer.measure("W", baseStyle)
     }
-    val cellWidth = cellLayout.size.width.toFloat()
+    // size.width rounds the glyph advance up to a whole pixel; text is drawn
+    // with the true fractional advance, so the per-column error accumulates
+    // and the cursor drifts past the text. getLineRight keeps the fraction.
+    val cellWidth = cellLayout.getLineRight(0)
     val cellHeight = cellLayout.size.height.toFloat()
 
     var scrollOffsetRows by remember { mutableIntStateOf(0) }

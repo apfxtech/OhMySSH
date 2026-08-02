@@ -171,16 +171,16 @@ class HostSession(
                     when {
                         pinned.isNullOrEmpty() -> {
                             onHostKeyPinned?.invoke(offered)
-                            mark(ConnectStage.HOST_KEY, StageStatus.DONE, "pinned $offered")
+                            mark(ConnectStage.HOST_KEY, StageStatus.DONE, "pinned")
                             true
                         }
                         pinned == offered -> {
-                            mark(ConnectStage.HOST_KEY, StageStatus.DONE, offered)
+                            mark(ConnectStage.HOST_KEY, StageStatus.DONE)
                             true
                         }
                         onHostKeyMismatch?.invoke(pinned, offered) == true -> {
                             onHostKeyPinned?.invoke(offered)
-                            mark(ConnectStage.HOST_KEY, StageStatus.DONE, "re-pinned $offered")
+                            mark(ConnectStage.HOST_KEY, StageStatus.DONE, "re-pinned")
                             true
                         }
                         else -> {

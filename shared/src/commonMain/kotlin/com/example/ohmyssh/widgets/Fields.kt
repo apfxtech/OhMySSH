@@ -18,8 +18,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +46,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -51,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.theme.appColors
+import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.ui.Dialogs
 
 @Composable
@@ -68,6 +75,8 @@ fun QTextField(
 ) {
     val colors = appColors
     val focusRequester = remember { FocusRequester() }
+    val clipboard = LocalClipboardManager.current
+    var revealed by remember { mutableStateOf(false) }
 
     OutlinedTextField(
         value = value,
@@ -94,7 +103,43 @@ fun QTextField(
             )
         },
         placeholder = hint?.let { { Text(it, fontSize = 14.sp, color = colors.textMuted) } },
-        visualTransformation = if (obscure) PasswordVisualTransformation() else VisualTransformation.None,
+        trailingIcon = if (obscure) {
+            {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (value.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                clipboard.setText(AnnotatedString(value))
+                                AppToasts.show("Password copied")
+                            },
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                Icons.Outlined.ContentCopy,
+                                contentDescription = "Copy password",
+                                tint = colors.textMuted,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { revealed = !revealed },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = if (revealed) "Hide password" else "Show password",
+                            tint = colors.textMuted,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
+            }
+        } else {
+            null
+        },
+        visualTransformation = if (obscure && !revealed) PasswordVisualTransformation() else VisualTransformation.None,
         singleLine = obscure || maxLines == 1,
         minLines = if (obscure) 1 else maxLines.coerceAtMost(3),
         maxLines = if (obscure) 1 else maxLines,
