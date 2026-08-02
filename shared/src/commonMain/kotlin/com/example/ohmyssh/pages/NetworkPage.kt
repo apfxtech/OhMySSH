@@ -118,14 +118,14 @@ fun NetworkPage() {
         },
     ) {
         Column(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxWidth().background(colors.accent)) {
+            Column(Modifier.fillMaxWidth().background(colors.card)) {
                 SearchBar(query = query, onQueryChange = { query = it })
                 if (LanScanner.scanning) {
                     LinearProgressIndicator(
                         progress = { LanScanner.progress ?: 0f },
                         modifier = Modifier.fillMaxWidth().height(2.dp),
-                        color = colors.onAccent.copy(alpha = 0.9f),
-                        trackColor = colors.onAccent.copy(alpha = 0.25f),
+                        color = colors.accent,
+                        trackColor = colors.divider,
                     )
                 }
             }
@@ -255,7 +255,7 @@ private fun HostCell(device: LanDevice, saved: Host?) {
 @Composable
 private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     val colors = appColors
-    val onAccent = colors.onAccent
+    val onAccent = colors.textPrimary
 
     Row(
         Modifier
@@ -321,12 +321,12 @@ private fun ScanPill(scanning: Boolean, onTap: () -> Unit) {
             .padding(end = 6.dp)
             .height(24.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(colors.onAccent.copy(alpha = if (scanning) 0.88f else 0.22f))
+            .background(colors.textPrimary.copy(alpha = if (scanning) 0.88f else 0.22f))
             .then(
                 if (scanning) {
                     Modifier
                 } else {
-                    Modifier.border(1.dp, colors.onAccent.copy(alpha = 0.26f), RoundedCornerShape(10.dp))
+                    Modifier.border(1.dp, colors.textPrimary.copy(alpha = 0.26f), RoundedCornerShape(10.dp))
                 },
             )
             .clickable(enabled = !scanning, onClick = onTap)
@@ -336,7 +336,7 @@ private fun ScanPill(scanning: Boolean, onTap: () -> Unit) {
         Icon(
             Icons.Filled.Sync,
             contentDescription = "Rescan the network",
-            tint = if (scanning) colors.accent else colors.onAccent,
+            tint = if (scanning) colors.accent else colors.textPrimary,
             modifier = Modifier.size(14.dp).rotate(angle),
         )
     }
@@ -350,15 +350,15 @@ private fun CountPill(shown: Int, total: Int) {
             .padding(end = 6.dp)
             .height(24.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(colors.onAccent.copy(alpha = 0.22f))
-            .border(1.dp, colors.onAccent.copy(alpha = 0.26f), RoundedCornerShape(10.dp))
+            .background(colors.textPrimary.copy(alpha = 0.22f))
+            .border(1.dp, colors.textPrimary.copy(alpha = 0.26f), RoundedCornerShape(10.dp))
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             if (shown < total) "$shown/$total" else "$total",
             style = TextStyle(
-                color = colors.onAccent,
+                color = colors.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.W600,
                 fontFamily = FontFamily.Default,

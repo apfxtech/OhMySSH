@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,7 +60,14 @@ fun RootScaffold(
 ) {
     val colors = appColors
     Column(Modifier.fillMaxSize().background(colors.background)) {
-        Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+        // The tab bar already covers the navigation-bar inset; without
+        // consuming it here every tab page would pad the bottom twice.
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .consumeWindowInsets(WindowInsets.navigationBars),
+        ) { content() }
         Column(
             Modifier
                 .fillMaxWidth()

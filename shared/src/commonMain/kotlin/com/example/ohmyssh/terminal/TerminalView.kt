@@ -94,37 +94,6 @@ class TerminalPalette(
     }
 }
 
-fun terminalPalette(
-    isDark: Boolean,
-    cursor: Color,
-    selection: Color,
-    foreground: Color,
-    background: Color,
-): TerminalPalette = TerminalPalette(
-    cursor = cursor,
-    selection = selection,
-    foreground = foreground,
-    background = background,
-    ansi = listOf(
-        if (isDark) Color(0xFF3E3E3E) else Color(0xFF2E2E2E),
-        Color(0xFFCD3131),
-        Color(0xFF0DBC79),
-        Color(0xFFE5E510),
-        Color(0xFF2472C8),
-        Color(0xFFBC3FBC),
-        Color(0xFF11A8CD),
-        Color(0xFFE5E5E5),
-        Color(0xFF666666),
-        Color(0xFFF14C4C),
-        Color(0xFF23D18B),
-        Color(0xFFF5F543),
-        Color(0xFF3B8EEA),
-        Color(0xFFD670D6),
-        Color(0xFF29B8DB),
-        Color(0xFFFFFFFF),
-    ),
-)
-
 @Composable
 fun TerminalView(
     terminal: TerminalEmulator,

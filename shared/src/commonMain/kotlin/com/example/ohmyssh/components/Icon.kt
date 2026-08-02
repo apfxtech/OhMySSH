@@ -79,9 +79,10 @@ class QIconBadgeStyle(
                 )
             }
             val isNearWhite = color.luminance() > 0.9f
+            val background = if (isNearWhite) colors.textMuted else color
             return QIconBadgeStyle(
-                background = if (isNearWhite) Color(0xFF9E9E9E) else color,
-                foreground = Color(0xFFFFFFFF),
+                background = background,
+                foreground = QAppColors.onColorFor(background),
             )
         }
     }

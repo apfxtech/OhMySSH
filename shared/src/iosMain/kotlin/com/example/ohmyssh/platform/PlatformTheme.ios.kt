@@ -1,5 +1,7 @@
 package com.example.ohmyssh.platform
 
+import androidx.compose.material3.ColorScheme
+import androidx.compose.runtime.Composable
 import com.example.ohmyssh.theme.QThemeMode
 import platform.UIKit.UIApplication
 import platform.UIKit.UIUserInterfaceStyle
@@ -15,3 +17,9 @@ actual fun applyPlatformTheme(mode: QThemeMode) {
         (window as? UIWindow)?.overrideUserInterfaceStyle = style
     }
 }
+
+actual val platformSupportsDynamicColors: Boolean
+    get() = false
+
+@Composable
+actual fun platformDynamicColorScheme(isDark: Boolean): ColorScheme? = null

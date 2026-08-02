@@ -81,8 +81,8 @@ import com.example.ohmyssh.session.TerminalSession
 import com.example.ohmyssh.session.Workspace
 import com.example.ohmyssh.session.sessionId
 import com.example.ohmyssh.ssh.HostSession
+import com.example.ohmyssh.terminal.TerminalPalette
 import com.example.ohmyssh.terminal.TerminalView
-import com.example.ohmyssh.terminal.terminalPalette
 import com.example.ohmyssh.theme.QAppColors
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
@@ -355,12 +355,12 @@ private fun WindowBody(window: PaneWindow) {
     Box(Modifier.fillMaxSize()) {
         TerminalView(
             terminal = session.terminal,
-            palette = terminalPalette(
-                isDark = colors.isDark,
+            palette = TerminalPalette(
                 cursor = colors.terminalCursor,
                 selection = colors.terminalSelection,
                 foreground = colors.terminalForeground,
                 background = colors.terminalBackground,
+                ansi = colors.terminalAnsi,
             ),
             modifier = Modifier.fillMaxSize(),
             readOnly = !session.isConnected,

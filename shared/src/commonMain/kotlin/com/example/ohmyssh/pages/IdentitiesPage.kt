@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardList
 import com.example.ohmyssh.components.QIconBadge
+import com.example.ohmyssh.components.QFloatingAction
 import com.example.ohmyssh.components.QPageAppBar
 import com.example.ohmyssh.components.QPageAppBarAction
 import com.example.ohmyssh.components.QScaffold
@@ -62,17 +63,12 @@ fun IdentitiesPage() {
     val identities = VaultStore.identities
 
     QScaffold(
-        appBar = {
-            QPageAppBar(
-                title = "Users",
-                subtitle = "${identities.size} saved",
-                actions = {
-                    QPageAppBarAction(
-                        tooltip = "New user",
-                        icon = Icons.Filled.Add,
-                        onPressed = { navigator.push { IdentityEditorPage(null) } },
-                    )
-                },
+        floatingActions = {
+            QFloatingAction(
+                tooltip = "New user",
+                icon = Icons.Filled.Add,
+                onPressed = { navigator.push { IdentityEditorPage(null) } },
+                primary = true,
             )
         },
     ) {

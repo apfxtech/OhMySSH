@@ -36,8 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardList
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QIconBadgeSvg
-import com.example.ohmyssh.components.QPageAppBar
-import com.example.ohmyssh.components.QPageAppBarAction
+import com.example.ohmyssh.components.QFloatingAction
 import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.data.ConnectionKind
 import com.example.ohmyssh.data.ConnectionOutcome
@@ -68,33 +67,23 @@ fun SessionsListPage() {
     val past = HistoryStore.past
 
     QScaffold(
-        appBar = {
-            QPageAppBar(
-                title = "Sessions",
-                subtitle = when {
-                    sessions.isNotEmpty() -> "${sessions.size} open"
-                    past.isNotEmpty() -> "${past.size} in history"
-                    else -> null
-                },
-                actions = {
-                    if (sessions.isNotEmpty()) {
-                        QPageAppBarAction(
-                            tooltip = "Close all",
-                            icon = Icons.Filled.LinkOff,
-                            onPressed = {
-                                scope.launch {
-                                    val confirmed = confirmDestructive(
-                                        title = "Close all sessions?",
-                                        message = "Every open connection will be dropped.",
-                                        actionLabel = "Close all",
-                                    )
-                                    if (confirmed) SessionManager.closeAll()
-                                }
-                            },
-                        )
-                    }
-                },
-            )
+        floatingActions = {
+            if (sessions.isNotEmpty()) {
+                QFloatingAction(
+                    tooltip = "Close all",
+                    icon = Icons.Filled.LinkOff,
+                    onPressed = {
+                        scope.launch {
+                            val confirmed = confirmDestructive(
+                                title = "Close all sessions?",
+                                message = "Every open connection will be dropped.",
+                                actionLabel = "Close all",
+                            )
+                            if (confirmed) SessionManager.closeAll()
+                        }
+                    },
+                )
+            }
         },
     ) {
         if (sessions.isEmpty() && past.isEmpty()) {

@@ -1,6 +1,8 @@
 package com.example.ohmyssh.platform
 
 import com.example.ohmyssh.theme.QAppThemeController
+import androidx.compose.material3.ColorScheme
+import androidx.compose.runtime.Composable
 import com.example.ohmyssh.theme.QThemeMode
 import com.sun.jna.Function
 import com.sun.jna.NativeLibrary
@@ -55,3 +57,9 @@ private object ObjC {
     fun send(receiver: Pointer?, selector: String, vararg args: Any?): Pointer? =
         msgSend.invokePointer(arrayOf(receiver, sel(selector), *args))
 }
+
+actual val platformSupportsDynamicColors: Boolean
+    get() = false
+
+@Composable
+actual fun platformDynamicColorScheme(isDark: Boolean): ColorScheme? = null

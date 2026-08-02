@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
@@ -45,7 +46,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardList
 import com.example.ohmyssh.components.QIconBadge
-import com.example.ohmyssh.components.QPageAppBar
 import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.data.AutoLogin
 import com.example.ohmyssh.data.AutoLoginException
@@ -98,7 +98,7 @@ fun SettingsPage(onLocked: () -> Unit) {
     val actions = listOf(
         SettingsAction(
             icon = Icons.Outlined.FileUpload,
-            color = Color(0xFF589DFF),
+            color = colors.info,
             title = "Export vault",
             subtitle = "Save an encrypted copy",
             onTap = {
@@ -115,7 +115,7 @@ fun SettingsPage(onLocked: () -> Unit) {
         ),
         SettingsAction(
             icon = Icons.Outlined.FileDownload,
-            color = Color(0xFF2ED34A),
+            color = colors.success,
             title = "Import vault",
             subtitle = "Merge systems and users from a file",
             onTap = {
@@ -153,7 +153,7 @@ fun SettingsPage(onLocked: () -> Unit) {
         ),
         SettingsAction(
             icon = Icons.Filled.Password,
-            color = Color(0xFFFF9B34),
+            color = colors.warning,
             title = "Change master password",
             subtitle = "Re-encrypts the vault in place",
             onTap = {
@@ -180,7 +180,7 @@ fun SettingsPage(onLocked: () -> Unit) {
         ),
         SettingsAction(
             icon = Icons.Outlined.Lock,
-            color = Color(0xFFE85858),
+            color = colors.danger,
             title = "Lock now",
             subtitle = "Closes every session, turns off auto-unlock and locks the app",
             onTap = {
@@ -203,7 +203,7 @@ fun SettingsPage(onLocked: () -> Unit) {
     val historyActions = listOf(
         SettingsAction(
             icon = Icons.Outlined.FileUpload,
-            color = Color(0xFF589DFF),
+            color = colors.info,
             title = "Export history",
             subtitle = "Save an encrypted copy of past connections",
             onTap = {
@@ -224,7 +224,7 @@ fun SettingsPage(onLocked: () -> Unit) {
         ),
         SettingsAction(
             icon = Icons.Outlined.FileDownload,
-            color = Color(0xFF2ED34A),
+            color = colors.success,
             title = "Import history",
             subtitle = "Merge past connections from a file",
             onTap = {
@@ -304,7 +304,7 @@ fun SettingsPage(onLocked: () -> Unit) {
         ),
     )
 
-    QScaffold(appBar = { QPageAppBar(title = "Settings") }) {
+    QScaffold {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -418,6 +418,14 @@ fun SettingsPage(onLocked: () -> Unit) {
                 },
             )
 
+            if (QAppThemeController.dynamicColorsSupported) {
+                Spacer(Modifier.height(14.dp))
+                GroupedCardList(
+                    items = listOf(0),
+                    itemBuilder = { DynamicColorsRow() },
+                )
+            }
+
             Spacer(Modifier.height(14.dp))
             GroupedCardList(
                 header = {
@@ -493,6 +501,43 @@ private fun AutoLoginRow(
         Switch(
             checked = value,
             onCheckedChange = if (enabled || value) onChanged else null,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = colors.onAccent,
+                checkedTrackColor = colors.accent,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun DynamicColorsRow() {
+    val colors = appColors
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        QIconBadge(icon = Icons.Filled.Palette, color = colors.accent)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "System colors",
+                style = TextStyle(
+                    color = colors.textPrimary,
+                    fontSize = 14.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.W600,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Follow the phone's wallpaper palette",
+                style = TextStyle(
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 15.sp,
+                ),
+            )
+        }
+        Switch(
+            checked = QAppThemeController.dynamicColors,
+            onCheckedChange = { QAppThemeController.applyDynamicColors(it) },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = colors.onAccent,
                 checkedTrackColor = colors.accent,

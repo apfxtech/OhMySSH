@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Usb
-import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Radar
@@ -41,13 +40,11 @@ import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardList
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QIconBadgeSvg
-import com.example.ohmyssh.components.QPageAppBar
-import com.example.ohmyssh.components.QPageAppBarAction
+import com.example.ohmyssh.components.QFloatingAction
 import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.data.Host
 import com.example.ohmyssh.data.HostGroup
 import com.example.ohmyssh.data.VaultStore
-import com.example.ohmyssh.data.newId
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.serial.SerialDeviceEntry
 import com.example.ohmyssh.serial.SerialRegistry
@@ -97,38 +94,17 @@ fun HostsPage() {
     }
 
     QScaffold(
-        appBar = {
-            QPageAppBar(
-                title = "Systems",
-                subtitle = "${VaultStore.hosts.size} saved",
-                actions = {
-                    QPageAppBarAction(
-                        tooltip = "Scan network",
-                        icon = Icons.Outlined.Radar,
-                        onPressed = { navigator.push { NetworkPage() } },
-                    )
-                    QPageAppBarAction(
-                        tooltip = "New group",
-                        icon = Icons.Outlined.CreateNewFolder,
-                        onPressed = {
-                            scope.launch {
-                                val name = promptForText(
-                                    title = "New group",
-                                    label = "Group name",
-                                    actionLabel = "Create",
-                                )
-                                if (!name.isNullOrEmpty()) {
-                                    VaultStore.saveGroup(HostGroup(id = newId(), name = name))
-                                }
-                            }
-                        },
-                    )
-                    QPageAppBarAction(
-                        tooltip = "New system",
-                        icon = Icons.Filled.Add,
-                        onPressed = { navigator.push { HostEditorPage(null) } },
-                    )
-                },
+        floatingActions = {
+            QFloatingAction(
+                tooltip = "Scan network",
+                icon = Icons.Outlined.Radar,
+                onPressed = { navigator.push { NetworkPage() } },
+            )
+            QFloatingAction(
+                tooltip = "New system",
+                icon = Icons.Filled.Add,
+                onPressed = { navigator.push { HostEditorPage(null) } },
+                primary = true,
             )
         },
     ) {
