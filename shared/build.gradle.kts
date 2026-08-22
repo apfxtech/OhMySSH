@@ -132,6 +132,31 @@ kotlin {
     }
 }
 
+// The MCP server ships as one jar so an MCP client can launch it with a plain
+// `java -cp`. The uber jar merges signed dependency jars (BouncyCastle), and the
+// JVM refuses to load classes from the result — "Invalid signature file digest
+// for Manifest main attributes" — until their signature files are dropped.
+val mcpJar by tasks.registering {
+    dependsOn("packageUberJarForCurrentOS")
+    val jarsDir = layout.buildDirectory.dir("compose/jars")
+    outputs.upToDateWhen { false }
+    doLast {
+        val jar = jarsDir.get().asFile.listFiles { file -> file.name.endsWith(".jar") }
+            ?.maxByOrNull { it.lastModified() }
+            ?: error("packageUberJarForCurrentOS produced no jar")
+        val strip = ProcessBuilder(
+            "zip", "-q", "-d", jar.absolutePath,
+            "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA",
+        ).redirectErrorStream(true).start()
+        val output = strip.inputStream.readBytes().decodeToString()
+        // zip exits 12 when it finds nothing to delete, which is the normal case
+        // on a jar that has already been stripped.
+        val code = strip.waitFor()
+        if (code != 0 && code != 12) error("stripping signatures failed ($code): $output")
+        logger.lifecycle("MCP server jar: ${jar.absolutePath}")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "com.example.ohmyssh.MainKt"

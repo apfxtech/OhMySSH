@@ -171,6 +171,8 @@ fun SessionPage(groupId: String) {
                 QPageAppBar(
                     title = windowTitle(focused.ref),
                     subtitle = when {
+                        session != null && session.agentOwned ->
+                            "${session.subtitle} · agent"
                         session != null -> session.subtitle
                         focused.ref is PaneRef.Picker -> "Choose a system"
                         else -> "Local files"
@@ -363,8 +365,8 @@ private fun WindowBody(window: PaneWindow) {
                 ansi = colors.terminalAnsi,
             ),
             modifier = Modifier.fillMaxSize(),
-            readOnly = !session.isConnected,
-            autofocus = session.isConnected,
+            readOnly = !session.isConnected || session.agentOwned,
+            autofocus = session.isConnected && !session.agentOwned,
         )
         if (connecting) {
             Box(Modifier.fillMaxSize().background(colors.background)) {

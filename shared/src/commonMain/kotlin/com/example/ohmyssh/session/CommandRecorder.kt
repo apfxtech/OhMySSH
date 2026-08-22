@@ -60,6 +60,22 @@ class CommandRecorder(
         running = null
     }
 
+    /// Records a command that never touched the terminal — one an agent ran on
+    /// its own exec channel. Without this the agent's connection shows up in the
+    /// history with no commands in it at all.
+    fun note(text: String, exitCode: Int? = null, durationMs: Long? = null) {
+        val clean = sanitize(text)
+        if (clean.isEmpty()) return
+        val command = LoggedCommand(
+            text = clean.take(kMaxCommandLength),
+            at = now(),
+            cwd = cwd,
+            exitCode = exitCode,
+            durationMs = durationMs,
+        )
+        onCommand?.invoke(command)
+    }
+
     private fun onKeys(data: String) {
         if (terminal.usingAltScreen) {
             resetLine()

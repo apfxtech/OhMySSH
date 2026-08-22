@@ -1,0 +1,33 @@
+#!/bin/sh
+# MCP stdio bridge for ohmyssh.
+#
+# The server lives inside the running GUI app so an agent shares the user's
+# sessions, terminal and history. This script is the stdio front end MCP clients
+# expect, forwarding frames to that app over loopback.
+#
+# Start the app first, then point a client at this script.
+exec python3 -c '
+import socket, sys, threading
+port = int(sys.argv[1]) if len(sys.argv) > 1 else 8722
+try:
+    s = socket.create_connection(("127.0.0.1", port), timeout=5)
+except OSError as e:
+    sys.stderr.write("ohmyssh not reachable on 127.0.0.1:%d (%s). Start the app first.\n" % (port, e))
+    sys.exit(1)
+s.settimeout(None)
+
+def pump_up():
+    try:
+        for line in sys.stdin.buffer:
+            s.sendall(line)
+    except Exception:
+        pass
+    finally:
+        try: s.shutdown(socket.SHUT_WR)
+        except Exception: pass
+
+threading.Thread(target=pump_up, daemon=True).start()
+for line in s.makefile("rb"):
+    sys.stdout.buffer.write(line)
+    sys.stdout.buffer.flush()
+' "${OHMYSSH_MCP_PORT:-8722}"

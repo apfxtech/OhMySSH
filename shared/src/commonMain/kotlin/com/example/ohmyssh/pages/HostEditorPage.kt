@@ -63,6 +63,8 @@ import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.widgets.CredentialsEditor
 import com.example.ohmyssh.widgets.PickOption
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import com.example.ohmyssh.widgets.QFormLabel
 import com.example.ohmyssh.widgets.QSecretText
 import com.example.ohmyssh.widgets.QTextField
@@ -94,6 +96,12 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
     var identityId by rememberSaveable(host?.id) { mutableStateOf(host?.identityId) }
     var groupId by rememberSaveable(host?.id) { mutableStateOf(host?.groupId) }
     var knownHostKey by rememberSaveable(host?.id) { mutableStateOf(host?.knownHostKey) }
+    var agentEnabled by rememberSaveable(host?.id) {
+        mutableStateOf(initial?.agentEnabled ?: false)
+    }
+    var agentMayAuthenticate by rememberSaveable(host?.id) {
+        mutableStateOf(initial?.agentMayAuthenticate ?: false)
+    }
     val credentials = rememberCredentialsState(host?.inlineIdentity)
 
     suspend fun save() {
@@ -131,6 +139,8 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
                 knownHostKey = knownHostKey,
                 osId = host?.osId,
                 osPretty = host?.osPretty,
+                agentEnabled = agentEnabled,
+                agentMayAuthenticate = agentEnabled && agentMayAuthenticate,
             ),
         )
         navigator.pop()
@@ -361,6 +371,27 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
                 maxLines = 3,
             )
 
+            QFormLabel("Agent")
+            AgentSwitchRow(
+                title = "Allow agent access",
+                subtitle = "An AI agent may open this system and run commands on it",
+                checked = agentEnabled,
+                onChanged = {
+                    agentEnabled = it
+                    // Letting the password survive the access toggle would leave
+                    // a system that grants sudo the moment access comes back on.
+                    if (!it) agentMayAuthenticate = false
+                },
+            )
+            AgentSwitchRow(
+                title = "Agent may request the password",
+                subtitle = "The agent can ask the app to type this login's password at a " +
+                    "sudo prompt. It never receives or sees the password itself.",
+                checked = agentMayAuthenticate,
+                enabled = agentEnabled,
+                onChanged = { agentMayAuthenticate = it },
+            )
+
             val pinned = knownHostKey
             if (pinned != null) {
                 QFormLabel("Host key")
@@ -452,5 +483,43 @@ private fun HostKeyCard(fingerprint: String, onForget: () -> Unit) {
                 modifier = Modifier.height(32.dp),
             ) { Text("Forget", fontSize = 13.sp) }
         }
+    }
+}
+
+@Composable
+private fun AgentSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onChanged: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
+    val colors = appColors
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = TextStyle(
+                    color = if (enabled) colors.textPrimary else colors.textMuted,
+                    fontSize = 14.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.W600,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                subtitle,
+                style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 15.sp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = if (enabled) onChanged else null,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = colors.onAccent,
+                checkedTrackColor = colors.accent,
+            ),
+        )
     }
 }

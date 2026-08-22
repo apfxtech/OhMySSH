@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ohmyssh": {
+      "command": "./tools/ohmyssh-mcp",
+      "args": []
+    }
+  }
+}

@@ -108,6 +108,19 @@ data class Host(
     val knownHostKey: String? = null,
     val osId: String? = null,
     val osPretty: String? = null,
+    /**
+     * Whether an agent may touch this system at all. Off for every system until
+     * the owner turns it on, including ones added later — an agent that could
+     * reach anything in the vault by default would be one mistaken prompt away
+     * from a machine nobody meant to expose.
+     */
+    val agentEnabled: Boolean = false,
+    /**
+     * Whether an agent may ask the app to type this login's password — a sudo
+     * or su prompt it cannot answer itself. The agent never receives the
+     * password and never sees it echoed; it only asks for it to be sent.
+     */
+    val agentMayAuthenticate: Boolean = false,
 ) {
     val hasInlineIdentity: Boolean get() = inlineIdentity != null
 
@@ -127,6 +140,8 @@ data class Host(
         knownHostKey?.let { put("knownHostKey", it) }
         osId?.let { put("osId", it) }
         osPretty?.let { put("osPretty", it) }
+        if (agentEnabled) put("agentEnabled", true)
+        if (agentMayAuthenticate) put("agentMayAuthenticate", true)
     }
 
     companion object {
@@ -142,6 +157,8 @@ data class Host(
             knownHostKey = json.str("knownHostKey"),
             osId = json.str("osId"),
             osPretty = json.str("osPretty"),
+            agentEnabled = json.bool("agentEnabled") ?: false,
+            agentMayAuthenticate = json.bool("agentMayAuthenticate") ?: false,
         )
     }
 }

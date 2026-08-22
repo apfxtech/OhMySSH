@@ -40,6 +40,17 @@ object SessionManager {
     fun byId(id: String): TerminalSession? = sessions.firstOrNull { it.id == id }
 
     fun open(host: Host): HostSession {
+        // Serial already reused a live session; SSH did not, so reconnecting to a
+        // host that was already open left two connections to the same machine.
+        val existing = sessions.firstOrNull { it is HostSession && it.host.id == host.id }
+        if (existing is HostSession) {
+            activate(existing.id)
+            if (existing.state == SessionState.CLOSED || existing.state == SessionState.FAILED) {
+                scope.launch { reconnect(existing) }
+            }
+            return existing
+        }
+
         val session = HostSession(host = host, identity = VaultStore.identityFor(host))
 
         session.onHostKeyPinned = { fingerprint ->
