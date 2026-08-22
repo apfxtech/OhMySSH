@@ -564,7 +564,10 @@ class TerminalEmulator(
         revision++
     }
 
-    fun <T> snapshot(offset: Int, block: (lines: List<TermLine>, cursorRow: Int) -> T): T =
+    fun <T> snapshot(
+        offset: Int,
+        block: (lines: List<TermLine>, cursorRow: Int, topRow: Long) -> T,
+    ): T =
         lock.withLock {
             val back = scrollback.size
             val clamped = offset.coerceIn(0, back)
@@ -580,8 +583,15 @@ class TerminalEmulator(
                 gridIndex++
             }
             val cursorRow = if (clamped == 0) cursorY else cursorY + clamped
-            block(lines, cursorRow)
+            block(lines, cursorRow, scrolledLines - clamped)
         }
+
+    /// Absolute row of the first line [snapshot] returns at this offset.
+    /// A selection is held in absolute rows, so it stays on its own text while
+    /// output scrolls underneath it.
+    fun topRow(offset: Int): Long = lock.withLock {
+        scrolledLines - offset.coerceIn(0, scrollback.size)
+    }
 
     fun cursorPoint(): ScreenPoint = lock.withLock {
         ScreenPoint(scrolledLines + cursorY, cursorX)
@@ -608,9 +618,54 @@ class TerminalEmulator(
 
     private fun lineAt(row: Long): TermLine? {
         val gridRow = row - scrolledLines
-        if (gridRow >= 0) return main.getOrNull(gridRow.toInt())
+        if (gridRow >= 0) return grid.getOrNull(gridRow.toInt())
         val index = scrollback.size + gridRow
-        return if (index >= 0) scrollback[index.toInt()] else null
+        return if (index >= 0) scrollback.getOrNull(index.toInt()) else null
+    }
+
+    /// Text of everything between two absolute points, both ends inclusive.
+    fun textBetween(from: ScreenPoint, to: ScreenPoint): String = lock.withLock {
+        val forward = from.row < to.row || (from.row == to.row && from.column <= to.column)
+        val start = if (forward) from else to
+        val end = if (forward) to else from
+        buildString {
+            var row = start.row
+            while (row <= end.row) {
+                val line = lineAt(row)
+                if (line != null) {
+                    val first = if (row == start.row) start.column.coerceIn(0, line.size) else 0
+                    val last =
+                        if (row == end.row) (end.column + 1).coerceIn(0, line.size) else line.size
+                    val text = line.textRange(first, last)
+                    // A wrapped row carries no line break of its own: adding one
+                    // would cut a long command in half on paste.
+                    if (line.wrapped && row < end.row) {
+                        append(text)
+                    } else {
+                        // Only a run that reaches the end of a row can be the
+                        // blank padding; a range picked out mid-row is kept as
+                        // selected, spaces and all.
+                        append(if (last >= line.size) text.trimEnd() else text)
+                        if (row < end.row) append('\n')
+                    }
+                }
+                row++
+            }
+        }
+    }
+
+    /// The run of non-blank cells around [point], for select-a-word — kept
+    /// whitespace-delimited so a path or a URL comes out whole.
+    fun wordAt(point: ScreenPoint): IntRange? = lock.withLock {
+        val line = lineAt(point.row) ?: return@withLock null
+        if (line.size == 0) return@withLock null
+        val x = point.column.coerceIn(0, line.size - 1)
+        if (line.chars[x].isWhitespace()) return@withLock null
+        var first = x
+        while (first > 0 && !line.chars[first - 1].isWhitespace()) first--
+        var last = x
+        while (last + 1 < line.size && !line.chars[last + 1].isWhitespace()) last++
+        first..last
     }
 
     fun allText(): String = lock.withLock {

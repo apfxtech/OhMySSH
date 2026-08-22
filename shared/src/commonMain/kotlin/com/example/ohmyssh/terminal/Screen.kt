@@ -1,6 +1,6 @@
 package com.example.ohmyssh.terminal
 
-class ScreenPoint(val row: Long, val column: Int)
+data class ScreenPoint(val row: Long, val column: Int)
 
 class LogicalLine(val text: String, val firstRow: Long, val lastRow: Long) {
     operator fun contains(row: Long): Boolean = row in firstRow..lastRow
