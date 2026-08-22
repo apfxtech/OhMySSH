@@ -75,9 +75,26 @@ MOUNT_DIR="/Volumes/$VOLUME_NAME"
 RW_IMAGE="$TMP_DIR/${FILE_NAME}-rw.dmg"
 MOUNTED=0
 
+# hdiutil exits 16 (EBUSY) when something still holds the volume: Spotlight
+# indexing it, Finder having just drawn it, or the runner's own housekeeping.
+# It clears on its own within seconds, so retry before reaching for -force.
+detach_volume() {
+  local target="$1"
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if hdiutil detach "$target" -quiet 2>/dev/null; then
+      return 0
+    fi
+    echo "Volume busy, retrying detach ($attempt/5)..." >&2
+    sleep 3
+  done
+  echo "Falling back to a forced detach." >&2
+  hdiutil detach "$target" -force -quiet
+}
+
 cleanup() {
   if [[ "$MOUNTED" -eq 1 ]]; then
-    hdiutil detach "$MOUNT_DIR" -quiet || true
+    detach_volume "$MOUNT_DIR" || true
   fi
   rm -rf "$TMP_DIR"
 }
@@ -182,7 +199,10 @@ hdiutil attach \
 MOUNTED=1
 
 sleep 5
-osascript - "$VOLUME_NAME" <<'APPLESCRIPT'
+# Icon layout is decoration. A runner with no usable Finder — no GUI session, or
+# Apple events refused — must still hand back a working DMG, so a failure here
+# costs the window arrangement and nothing else.
+if ! osascript - "$VOLUME_NAME" <<'APPLESCRIPT'
 on run (volumeName)
   tell application "Finder"
     tell disk (volumeName as string)
@@ -204,16 +224,19 @@ on run (volumeName)
       set position of item "ohmyssh.app" to {210, 270}
       set position of item "Applications" to {690, 270}
       set position of item "readme.txt" to {820, 80}
-      close
-      open
+      update without registering applications
       delay 3
+      close
     end tell
   end tell
 end run
 APPLESCRIPT
+then
+  echo "Finder could not arrange the DMG window; shipping the default layout." >&2
+fi
 
 sync
-hdiutil detach "$MOUNT_DIR" -quiet
+detach_volume "$MOUNT_DIR"
 MOUNTED=0
 
 rm -f "$OUT_FILE"
