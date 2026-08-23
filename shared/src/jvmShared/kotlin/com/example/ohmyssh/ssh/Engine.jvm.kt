@@ -59,6 +59,11 @@ private object SshjEngine : SshEngine {
         val client = SSHClient(DefaultConfig())
         client.connectTimeout = 15_000
         client.timeout = 30_000
+        // sshj starts the keep-alive thread inside connect(), and only if the
+        // interval is already non-zero: set after connecting, heartbeats never
+        // run and an idle session dies whenever the first NAT or server idle
+        // timer on the path fires.
+        client.connection.keepAlive.keepAliveInterval = 15
 
         var fingerprint: String? = null
         var rejected = false
@@ -110,7 +115,6 @@ private object SshjEngine : SshEngine {
             throw if (error is UserAuthException) SshAuthException() else error
         }
 
-        client.connection.keepAlive.keepAliveInterval = 15
         SshjConnection(client, fingerprint)
     }
 }
