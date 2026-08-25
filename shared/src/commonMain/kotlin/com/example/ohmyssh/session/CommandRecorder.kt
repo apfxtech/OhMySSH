@@ -43,6 +43,12 @@ class CommandRecorder(
 
     private var cwd: String? = null
 
+    /// The prompt the last line was typed behind, kept for whoever needs to
+    /// recognise a prompt on screen — a paste is only paced safely by knowing
+    /// what one looks like on this host.
+    var lastPrompt: String? = null
+        private set
+
     private var running: LoggedCommand? = null
     private var runningSince = 0L
 
@@ -117,6 +123,7 @@ class CommandRecorder(
 
             is ShellSignal.InputStart -> {
                 anchor = anchorAt(terminal.cursorPoint())
+                learnPrompt()
                 lineAnchored = true
                 submitted = false
             }
@@ -166,6 +173,7 @@ class CommandRecorder(
         cursor.row in line && line.text.startsWith(at.prompt)
 
     private fun submit(raw: String) {
+        val at = anchor
         resetLine()
 
         // A blank line after the prompt means either that nothing was typed, or
@@ -174,6 +182,11 @@ class CommandRecorder(
         // written down.
         val text = sanitize(raw)
         if (text.isEmpty()) return
+
+        // Which is also why the prompt is only learned from a line that came
+        // back echoed: what stands in front of an unechoed one is a program
+        // asking for a secret, not a shell waiting for a command.
+        at?.prompt?.takeIf { it.isNotBlank() }?.let { lastPrompt = it }
         record(text)
     }
 
@@ -195,6 +208,10 @@ class CommandRecorder(
         running = null
         command.exitCode = exitCode
         command.durationMs = (now() - runningSince).coerceAtLeast(0)
+    }
+
+    private fun learnPrompt() {
+        anchor?.prompt?.takeIf { it.isNotBlank() }?.let { lastPrompt = it }
     }
 
     private fun resetLine() {

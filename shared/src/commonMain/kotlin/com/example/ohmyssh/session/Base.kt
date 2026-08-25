@@ -3,7 +3,13 @@ package com.example.ohmyssh.session
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.ohmyssh.terminal.PasteQueue
 import com.example.ohmyssh.terminal.TerminalEmulator
+import com.example.ohmyssh.ui.AppToasts
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 enum class SessionState { IDLE, CONNECTING, CONNECTED, FAILED, CLOSED }
 
@@ -19,6 +25,17 @@ abstract class TerminalSession(val id: String) {
     val terminal = TerminalEmulator(maxScrollback = 10000)
 
     val commands = CommandRecorder(terminal)
+
+    private val pasteScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /// Pasted blocks go through here rather than straight down the channel, one
+    /// command at a time and only while a prompt is waiting for them.
+    val paste = PasteQueue(
+        terminal = terminal,
+        lastPrompt = { commands.lastPrompt },
+        scope = pasteScope,
+        onNotice = { AppToasts.show(it) },
+    )
 
     abstract val title: String
 
@@ -68,7 +85,10 @@ abstract class TerminalSession(val id: String) {
 
     abstract suspend fun disconnect()
 
-    open fun dispose() {}
+    open fun dispose() {
+        paste.dispose()
+        pasteScope.cancel()
+    }
 }
 
 class SessionError(override val message: String) : Exception(message) {

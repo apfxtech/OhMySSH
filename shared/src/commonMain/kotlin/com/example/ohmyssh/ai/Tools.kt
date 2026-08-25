@@ -114,7 +114,8 @@ object AppTools {
         ),
         ToolSpec(
             "terminal_input",
-            "Type into the user's terminal, blind. Only for interactive programs run_command cannot drive.",
+            "Type into the user's terminal, blind. Only for interactive programs run_command cannot " +
+                "drive. Several lines are run one per prompt, comments dropped.",
             schema(
                 sessionArg,
                 "text" to str("raw text; end with CR for Enter"),
@@ -205,8 +206,18 @@ object AppTools {
 
         "terminal_input" -> {
             val session = Targets.require(args.need("session"))
-            session.terminal.sendKeys(args.need("text"))
-            ToolResult.ok("Sent.")
+            val text = args.need("text")
+            // Keystrokes go straight through — arrows, Ctrl-C and a bare answer
+            // to a prompt are what this tool is for. A block of commands does
+            // not: it is paced through the paste queue, one command per prompt,
+            // so a sudo question in the middle of it is not answered by line 3.
+            if (text.trimEnd('\r', '\n').any { it == '\n' || it == '\r' }) {
+                val queued = session.paste.submit(text)
+                ToolResult.ok("Queued $queued command(s), one per prompt.")
+            } else {
+                session.terminal.sendKeys(text)
+                ToolResult.ok("Sent.")
+            }
         }
 
         "send_password" -> {

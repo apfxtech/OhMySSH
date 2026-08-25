@@ -58,6 +58,19 @@ class TerminalEmulator(
         private set
     private var insertMode = false
 
+    /// Whether the program on the far end asked for pasted text to arrive
+    /// wrapped in the paste markers (DECSET 2004), so it can tell a paste from
+    /// typing. Bash has asked for this by default since readline 8.1.
+    var bracketedPaste = false
+        private set
+
+    /// The last OSC 133 mark a shell with integration emitted: 'A' prompt,
+    /// 'B' input, 'C' running, 'D' finished. Null on a shell without it, which
+    /// is the difference between knowing what the far end is doing and having
+    /// to read the screen for it.
+    var lastShellMark: Char? = null
+        private set
+
     private var charsetGraphics = false
     private var charsetGraphicsG1 = false
     private var usingG1 = false
@@ -266,7 +279,10 @@ class TerminalEmulator(
             "0", "2" -> title = body
             "7" -> fileUrlPath(body).takeIf { it.isNotBlank() }
                 ?.let { signal(ShellSignal.WorkingDirectory(it)) }
-            "133" -> parseSemanticPrompt(body)?.let { signal(it) }
+            "133" -> parseSemanticPrompt(body)?.let {
+                lastShellMark = body.firstOrNull()
+                signal(it)
+            }
         }
     }
 
@@ -428,7 +444,7 @@ class TerminalEmulator(
                             restoreCursor()
                         }
                     }
-                    2004 -> {}
+                    2004 -> bracketedPaste = enable
                 }
             } else {
                 when (mode) {
@@ -528,6 +544,8 @@ class TerminalEmulator(
         originMode = false
         insertMode = false
         applicationCursorKeys = false
+        bracketedPaste = false
+        lastShellMark = null
         cursorVisible = true
         charsetGraphics = false
         charsetGraphicsG1 = false
@@ -614,6 +632,21 @@ class TerminalEmulator(
             last++
         }
         LogicalLine(text = text.toString(), firstRow = row, lastRow = last)
+    }
+
+    /// The logical line the row belongs to, found from anywhere inside it.
+    /// [logicalLineAt] starts where it is told, which cuts a wrapped line in
+    /// half when the cursor has moved past its first row.
+    fun logicalLineEnclosing(row: Long): LogicalLine? = lock.withLock {
+        if (usingAlt) return@withLock null
+        var first = row
+        val floor = row - rows - scrollback.size
+        while (first > floor) {
+            val previous = lineAt(first - 1) ?: break
+            if (!previous.wrapped) break
+            first--
+        }
+        logicalLineAt(first)
     }
 
     private fun lineAt(row: Long): TermLine? {

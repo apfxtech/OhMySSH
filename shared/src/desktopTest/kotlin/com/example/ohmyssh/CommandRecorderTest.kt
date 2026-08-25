@@ -1,63 +1,9 @@
 package com.example.ohmyssh
 
-import com.example.ohmyssh.data.LoggedCommand
-import com.example.ohmyssh.session.CommandRecorder
-import com.example.ohmyssh.terminal.TerminalEmulator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-
-private class FakeShell(cols: Int = 40, rows: Int = 8, val prompt: String = "user@host:~$ ") {
-    var clock = 1_700_000_000_000L
-    var echo = true
-
-    val terminal = TerminalEmulator(cols = cols, rows = rows)
-    val captured = mutableListOf<LoggedCommand>()
-
-    private val recorder = CommandRecorder(terminal) { clock }
-
-    init {
-        recorder.onCommand = { captured.add(it) }
-        recorder.attach()
-        terminal.onOutput = { data -> if (echo) echoBack(data) }
-    }
-
-    private fun echoBack(data: String) {
-        var inEscape = false
-        for (ch in data) {
-            if (inEscape) {
-                if (ch.isLetter() || ch == '~') inEscape = false
-                continue
-            }
-            when {
-                ch == '' -> inEscape = true
-                ch == '\r' || ch == '\n' -> terminal.write("\r\n")
-                ch == '' -> terminal.write("\b \b")
-                ch.code >= 0x20 -> terminal.write(ch.toString())
-                else -> {}
-            }
-        }
-    }
-
-    fun prompt() = terminal.write(prompt)
-
-    fun output(text: String) = terminal.write(text)
-
-    fun type(text: String) {
-        for (ch in text) terminal.sendKeys(ch.toString())
-    }
-
-    fun enter() = terminal.sendKeys("\r")
-
-    fun run(command: String) {
-        prompt()
-        type(command)
-        enter()
-    }
-
-    val texts: List<String> get() = captured.map { it.text }
-}
 
 class CommandRecorderTest {
     @Test
@@ -124,6 +70,19 @@ class CommandRecorderTest {
         shell.prompt()
         shell.terminal.sendKeys("uptime\rwhoami\rid -u\r")
         assertEquals(listOf("uptime", "whoami", "id -u"), shell.texts)
+    }
+
+    @Test
+    fun neverLearnsAPasswordPromptAsAShellPrompt() {
+        val shell = FakeShell()
+        shell.run("sudo id")
+        shell.echo = false
+        shell.output("[sudo] password for user: ")
+        shell.type("hunter2")
+        shell.enter()
+
+        assertEquals(listOf("sudo id"), shell.texts)
+        assertEquals("user@host:~$ ", shell.recorder.lastPrompt)
     }
 
     @Test

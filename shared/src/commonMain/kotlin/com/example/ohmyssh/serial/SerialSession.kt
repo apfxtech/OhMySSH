@@ -153,6 +153,7 @@ class SerialSession(
     }
 
     override fun dispose() {
+        super.dispose()
         terminal.onOutput = null
         scope.cancel()
     }

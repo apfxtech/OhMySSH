@@ -357,6 +357,7 @@ private fun WindowBody(window: PaneWindow) {
     Box(Modifier.fillMaxSize()) {
         TerminalView(
             terminal = session.terminal,
+            paste = session.paste,
             palette = TerminalPalette(
                 cursor = colors.terminalCursor,
                 selection = colors.terminalSelection,

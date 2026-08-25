@@ -285,6 +285,7 @@ class HostSession(
     }
 
     override fun dispose() {
+        super.dispose()
         // Detach terminal callbacks first: a late resize event would otherwise
         // write to a shell that is already gone.
         terminal.onOutput = null

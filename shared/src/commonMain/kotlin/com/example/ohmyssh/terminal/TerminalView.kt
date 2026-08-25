@@ -142,6 +142,7 @@ private const val DOUBLE_CLICK_MICROS = 400_000L
 @Composable
 fun TerminalView(
     terminal: TerminalEmulator,
+    paste: PasteQueue,
     palette: TerminalPalette,
     modifier: Modifier = Modifier,
     fontSize: androidx.compose.ui.unit.TextUnit = 13.sp,
@@ -208,11 +209,18 @@ fun TerminalView(
         AppToasts.show("Copied")
     }
 
-    // Every newline lands as a carriage return: a shell reading a paste treats
-    // \n as its own Enter and would run half the command twice.
-    fun paste() {
-        val text = clipboard.getText()?.text ?: return
-        if (text.isNotEmpty()) send(text.replace("\r\n", "\r").replace("\n", "\r"))
+    // Pasted text is handed to the queue rather than written straight out: a
+    // block of commands has to arrive one at a time, or the first one that asks
+    // a question is answered by the rest of the paste.
+    fun submitPaste(text: String) {
+        if (readOnly || text.isEmpty()) return
+        scrollOffsetRows = 0
+        clearSelection()
+        paste.submit(text)
+    }
+
+    fun pasteClipboard() {
+        submitPaste(clipboard.getText()?.text ?: return)
     }
 
     fun selectWord(point: ScreenPoint) {
@@ -232,8 +240,14 @@ fun TerminalView(
                 if (readOnly) return@onPreviewKeyEvent false
                 // Paste first, so Ctrl/Cmd+V never reaches the shell as ^V.
                 if (isPasteChord(event)) {
-                    paste()
+                    pasteClipboard()
                     return@onPreviewKeyEvent true
+                }
+                if (paste.remaining > 0 && isPasteCancelChord(event)) {
+                    paste.cancel()
+                    // Ctrl+C carries on to the shell: the command the queue is
+                    // waiting on is the one that needs interrupting.
+                    if (event.key == Key.Escape) return@onPreviewKeyEvent true
                 }
                 val encoded = encodeKeyEvent(event, terminal.applicationCursorKeys)
                 if (encoded != null) {
@@ -506,11 +520,15 @@ fun TerminalView(
                 if (!readOnly) {
                     Box(Modifier.width(1.dp).height(18.dp).background(colors.divider))
                     SelectionAction(Icons.Outlined.ContentPaste, "Paste", colors) {
-                        paste()
+                        pasteClipboard()
                         focusInput()
                     }
                 }
             }
+        }
+
+        if (paste.remaining > 0) {
+            PasteStrip(paste, colors, Modifier.align(Alignment.TopEnd).padding(6.dp))
         }
 
         BasicTextField(
@@ -524,7 +542,14 @@ fun TerminalView(
                     }
                     text.length > sentinel.length -> {
                         val typed = text.removePrefix(sentinel)
-                        if (typed.isNotEmpty()) send(typed.replace("\n", "\r"))
+                        // The field hands over one keystroke at a time, so
+                        // several characters with a newline among them came off
+                        // the clipboard. A lone newline is the Enter key.
+                        if (typed.length > 1 && typed.contains('\n')) {
+                            submitPaste(typed)
+                        } else if (typed.isNotEmpty()) {
+                            send(typed.replace('\n', '\r'))
+                        }
                         fieldValue = TextFieldValue(sentinel, selection = TextRange(sentinel.length))
                     }
                     else -> fieldValue = next.copy(selection = TextRange(sentinel.length))
@@ -566,6 +591,45 @@ private fun SelectionAction(
         Spacer(Modifier.width(6.dp))
         Text(label, style = TextStyle(color = colors.textPrimary, fontSize = 12.5.sp))
     }
+}
+
+@Composable
+private fun PasteStrip(paste: PasteQueue, colors: QAppColors, modifier: Modifier) {
+    val shape = RoundedCornerShape(8.dp)
+    val label = when (paste.waiting) {
+        PasteWait.SECRET -> "Paste held · password prompt"
+        PasteWait.FULLSCREEN -> "Paste held"
+        PasteWait.PROMPT -> "Waiting for prompt"
+        PasteWait.NONE -> "Pasting"
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(shape)
+            .background(colors.card)
+            .border(1.dp, colors.divider, shape),
+    ) {
+        Text(
+            "$label · ${paste.remaining} left",
+            style = TextStyle(color = colors.textSecondary, fontSize = 12.5.sp),
+            modifier = Modifier.padding(start = 11.dp, end = 9.dp, top = 7.dp, bottom = 7.dp),
+        )
+        Box(Modifier.width(1.dp).height(18.dp).background(colors.divider))
+        Text(
+            "Cancel",
+            style = TextStyle(color = colors.accent, fontSize = 12.5.sp),
+            modifier = Modifier
+                .clickable { paste.cancel() }
+                .padding(horizontal = 11.dp, vertical = 7.dp),
+        )
+    }
+}
+
+/// Esc drops what is left of a paste; so does Ctrl+C, which is the key someone
+/// reaches for when the command the queue is waiting on has to stop.
+private fun isPasteCancelChord(event: KeyEvent): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    return event.key == Key.Escape || (event.key == Key.C && event.isCtrlPressed)
 }
 
 private fun isPasteChord(event: KeyEvent): Boolean {
