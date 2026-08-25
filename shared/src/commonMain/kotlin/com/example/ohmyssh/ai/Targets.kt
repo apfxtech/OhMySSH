@@ -91,9 +91,17 @@ object Targets {
 
         // Reusing a session the person already opened must not take their
         // keyboard away from them, so only a freshly created one is marked.
-        val fresh = SessionManager.sessions.none { it is HostSession && it.host.id == host.id }
+        SessionManager.liveFor(host)?.let { open ->
+            SessionManager.activate(open.id)
+            if (open.state == SessionState.CLOSED || open.state == SessionState.FAILED) {
+                SessionManager.reconnect(open)
+            }
+            awaitConnected(open, connectTimeoutMs)
+            return open
+        }
+
         val session = SessionManager.open(host)
-        if (fresh) session.agentOwned = true
+        session.agentOwned = true
         awaitConnected(session, connectTimeoutMs)
         return session
     }
