@@ -129,7 +129,7 @@ object LanScanner {
         interfaceName = primary.name
         subnet = networkOf(primary.ipv4, primary.prefixLength)
 
-        trustsProbes = probe.probesAreHonest()
+        trustsProbes = probesAreHonest(probe.probeCanary(), primary.ipv4)
 
         val targets = sweepRange(primary.ipv4, primary.prefixLength)
         total = targets.size

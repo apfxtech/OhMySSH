@@ -5,6 +5,7 @@ import com.example.ohmyssh.components.QCol
 import com.example.ohmyssh.components.kTableFlexMinWidth
 import com.example.ohmyssh.components.layoutTableColumns
 import com.example.ohmyssh.net.LanInterface
+import com.example.ohmyssh.net.ProbeCanary
 import com.example.ohmyssh.net.SWEEP_LIMIT
 import com.example.ohmyssh.net.canonicalIpv6
 import com.example.ohmyssh.net.chooseSweepInterface
@@ -14,9 +15,11 @@ import com.example.ohmyssh.net.networkOf
 import com.example.ohmyssh.net.normalizeMac
 import com.example.ohmyssh.net.parseIpv4
 import com.example.ohmyssh.net.parseNeighbours
+import com.example.ohmyssh.net.probesAreHonest
 import com.example.ohmyssh.net.sweepRange
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -122,6 +125,24 @@ class LanScanTest {
         val wired = LanInterface("en5", "10.0.9.4", 24, mac = "aa:bb:cc:dd:ee:01")
         val wifi = LanInterface("en0", "192.168.1.20", 24, mac = "aa:bb:cc:dd:ee:02")
         assertEquals("en0", chooseSweepInterface(listOf(wired, wifi), "192.168.1.20")?.name)
+    }
+
+    @Test
+    fun `keeps probe results when only the tunnel answers for everything`() {
+        // A full tunnel holds the route to the canary while the LAN keeps its own,
+        // so its "everything answers" verdict describes a path the sweep never takes.
+        val tunnel = ProbeCanary(answered = true, source = "172.18.0.1")
+        assertTrue(probesAreHonest(tunnel, "192.168.137.253"))
+        val silent = ProbeCanary(answered = false, source = "192.168.137.253")
+        assertTrue(probesAreHonest(silent, "192.168.137.253"))
+    }
+
+    @Test
+    fun `drops probe results when the swept path answers for everything`() {
+        val swept = ProbeCanary(answered = true, source = "192.168.137.253")
+        assertFalse(probesAreHonest(swept, "192.168.137.253"))
+        // No source to compare against: believe the verdict rather than the probes.
+        assertFalse(probesAreHonest(ProbeCanary(answered = true, source = null), "192.168.137.253"))
     }
 
     @Test

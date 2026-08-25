@@ -24,6 +24,9 @@ private val PROBE_PORTS = intArrayOf(22, 80, 443, 445)
 
 private const val PROC_NET_ARP = "/proc/net/arp"
 
+/** Reached to learn which of our own addresses the kernel would send from. */
+private const val BEACON_ADDRESS = "8.8.8.8"
+
 /** RFC 5737 TEST-NET-1: documentation only, so nothing may ever answer for it. */
 private const val CANARY_ADDRESS = "192.0.2.1"
 private const val CANARY_TIMEOUT_MS = 400
@@ -51,31 +54,25 @@ private object JvmLanProbe : LanProbe {
     }
 
     override suspend fun outboundIpv4(): String? = withContext(Dispatchers.IO) {
-        runCatching {
-            // A connected UDP socket sends nothing; it just makes the kernel pick
-            // the route, and with it the source address of the LAN we are on.
-            DatagramSocket().use { socket ->
-                socket.connect(InetSocketAddress(InetAddress.getByName("8.8.8.8"), 53))
-                (socket.localAddress as? Inet4Address)?.hostAddress
-            }
-        }.getOrNull()?.takeUnless { it == "0.0.0.0" }
+        addressFor(BEACON_ADDRESS)?.let(::sourceAddressFor)
     }
 
-    override suspend fun probesAreHonest(): Boolean = withContext(Dispatchers.IO) {
-        val canary = runCatching { InetAddress.getByName(CANARY_ADDRESS) }.getOrNull()
-            ?: return@withContext true
+    override suspend fun probeCanary(): ProbeCanary = withContext(Dispatchers.IO) {
+        val canary = addressFor(CANARY_ADDRESS)
+            ?: return@withContext ProbeCanary(answered = false, source = null)
+        val source = sourceAddressFor(canary)
+
         if (runCatching { canary.isReachable(CANARY_TIMEOUT_MS) }.getOrDefault(false)) {
-            Log.info("lan", "$CANARY_ADDRESS answered a ping; probe results are being ignored")
-            return@withContext false
+            Log.info("lan", "$CANARY_ADDRESS answered a ping from ${source ?: "?"}")
+            return@withContext ProbeCanary(answered = true, source = source)
         }
         val faked = PROBE_PORTS.any { knocks(canary, it, CANARY_TIMEOUT_MS) }
-        if (faked) Log.info("lan", "$CANARY_ADDRESS accepted a connection; probe results are being ignored")
-        !faked
+        if (faked) Log.info("lan", "$CANARY_ADDRESS accepted a connection from ${source ?: "?"}")
+        ProbeCanary(answered = faked, source = source)
     }
 
     override suspend fun ping(ip: String, timeoutMs: Int): Int? = withContext(Dispatchers.IO) {
-        val address = runCatching { InetAddress.getByName(ip) }.getOrNull()
-            ?: return@withContext null
+        val address = addressFor(ip) ?: return@withContext null
         val started = System.nanoTime()
 
         // ICMP where the OS allows it unprivileged, a TCP echo knock where it does not.
@@ -99,8 +96,7 @@ private object JvmLanProbe : LanProbe {
     }
 
     override suspend fun reverseDns(ip: String): String? = withContext(Dispatchers.IO) {
-        val address = runCatching { InetAddress.getByName(ip) }.getOrNull()
-            ?: return@withContext null
+        val address = addressFor(ip) ?: return@withContext null
         val name = runCatching { address.canonicalHostName }.getOrNull()?.trimEnd('.')
         name?.takeUnless { it.isEmpty() || it == ip }
     }
@@ -165,6 +161,20 @@ internal fun parseNeighbours(dumps: String): List<LanNeighbour> {
     }
     return entries
 }
+
+private fun addressFor(ip: String): InetAddress? =
+    runCatching { InetAddress.getByName(ip) }.getOrNull()
+
+/**
+ * The address the kernel would send to [destination] from. A connected UDP socket
+ * sends nothing; it just makes the kernel pick the route, and with it the source.
+ */
+private fun sourceAddressFor(destination: InetAddress): String? = runCatching {
+    DatagramSocket().use { socket ->
+        socket.connect(InetSocketAddress(destination, 53))
+        (socket.localAddress as? Inet4Address)?.hostAddress
+    }
+}.getOrNull()?.takeUnless { it == "0.0.0.0" }
 
 private fun knocks(address: InetAddress, port: Int, timeoutMs: Int): Boolean = try {
     Socket().use { socket ->

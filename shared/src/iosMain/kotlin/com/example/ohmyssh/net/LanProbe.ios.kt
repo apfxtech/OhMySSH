@@ -94,9 +94,11 @@ private object IosLanProbe : LanProbe {
         outboundAddress(AF_INET, IPV4_BEACON)
     }
 
-    override suspend fun probesAreHonest(): Boolean = withContext(sockets) {
-        val canary = parseIpv4(CANARY_ADDRESS) ?: return@withContext true
-        !knock(canary, PROBE_PORTS, CANARY_TIMEOUT_MS)
+    override suspend fun probeCanary(): ProbeCanary = withContext(sockets) {
+        val source = outboundAddress(AF_INET, CANARY_ADDRESS)
+        val canary = parseIpv4(CANARY_ADDRESS)
+            ?: return@withContext ProbeCanary(answered = false, source = source)
+        ProbeCanary(answered = knock(canary, PROBE_PORTS, CANARY_TIMEOUT_MS), source = source)
     }
 
     override suspend fun ping(ip: String, timeoutMs: Int): Int? = withContext(sockets) {

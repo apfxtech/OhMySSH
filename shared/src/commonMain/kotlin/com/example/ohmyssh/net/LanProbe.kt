@@ -12,6 +12,14 @@ class LanInterface(
 /** An entry from an OS neighbour cache: ARP holds the IPv4 side, NDP the IPv6 one. */
 class LanNeighbour(val ip: String, val mac: String)
 
+/**
+ * What probing an address that cannot exist did, and which of our own addresses
+ * the probe left from. [source] is what makes the answer usable: a full tunnel
+ * answers for every address it carries while the LAN keeps its own route, so a
+ * verdict reached down the tunnel says nothing about the LAN being swept.
+ */
+class ProbeCanary(val answered: Boolean, val source: String?)
+
 interface LanProbe {
     suspend fun interfaces(): List<LanInterface>
 
@@ -19,11 +27,12 @@ interface LanProbe {
     suspend fun outboundIpv4(): String?
 
     /**
-     * Probes an address that cannot exist. False means something on the path
-     * answers for everything — a transparent proxy or a VPN client — so probe
-     * results carry no information and only the neighbour table can be believed.
+     * Probes an address that cannot exist. An answer means something on that
+     * path answers for everything — a transparent proxy or a VPN client — so
+     * probes down it carry no information; [probesAreHonest] decides whether
+     * that path is the one being swept.
      */
-    suspend fun probesAreHonest(): Boolean
+    suspend fun probeCanary(): ProbeCanary
 
     /** Round trip in milliseconds, or null when nothing answered within [timeoutMs]. */
     suspend fun ping(ip: String, timeoutMs: Int): Int?

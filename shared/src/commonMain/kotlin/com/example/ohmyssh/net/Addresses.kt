@@ -144,6 +144,16 @@ fun chooseSweepInterface(interfaces: List<LanInterface>, outboundIpv4: String?):
         ?: interfaces.firstOrNull()
 }
 
+/**
+ * Whether ping and knock answers from a sweep of [sweepIpv4] mean anything. A
+ * canary that left from a different address of ours measured a different path:
+ * a full-tunnel VPN answers for the whole space it carries, while the LAN it
+ * leaves on its own route still answers only for the devices on it. Applying
+ * the tunnel's verdict there would throw away every real device the sweep found.
+ */
+fun probesAreHonest(canary: ProbeCanary, sweepIpv4: String): Boolean =
+    !canary.answered || (canary.source != null && canary.source != sweepIpv4)
+
 private val MAC_SHAPE = Regex("^[0-9a-f]{1,2}([:-][0-9a-f]{1,2}){5}$")
 
 /**
