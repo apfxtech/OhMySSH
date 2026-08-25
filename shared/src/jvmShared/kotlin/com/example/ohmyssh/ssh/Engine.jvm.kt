@@ -28,6 +28,8 @@ import net.schmizz.sshj.userauth.keyprovider.PuTTYKeyFile
 import net.schmizz.sshj.userauth.password.PasswordUtils
 import java.io.InputStream
 import java.io.StringReader
+import java.net.InetAddress
+import java.net.UnknownHostException
 import java.security.MessageDigest
 import java.security.PublicKey
 import java.util.Base64
@@ -56,45 +58,43 @@ private object SshjEngine : SshEngine {
         onHandshake: suspend (keyType: String) -> Unit,
         verifyHostKey: suspend (keyType: String, fingerprint: String) -> Boolean,
     ): SshConnection = withContext(Dispatchers.IO) {
-        val client = SSHClient(DefaultConfig())
-        client.connectTimeout = 15_000
-        client.timeout = 30_000
-        // sshj starts the keep-alive thread inside connect(), and only if the
-        // interval is already non-zero: set after connecting, heartbeats never
-        // run and an idle session dies whenever the first NAT or server idle
-        // timer on the path fires.
-        client.connection.keepAlive.keepAliveInterval = 15
-
         var fingerprint: String? = null
         var rejected = false
 
-        client.addHostKeyVerifier(
-            object : HostKeyVerifier {
-                override fun verify(hostname: String?, p: Int, key: PublicKey): Boolean {
-                    val type = KeyType.fromKey(key).toString()
-                    val offered = openSshFingerprint(key)
-                    fingerprint = offered
-                    // The verifier runs on sshj's transport thread; the
-                    // suspending callbacks are bridged here deliberately.
-                    return runBlocking {
-                        onHandshake(type)
-                        val accepted = verifyHostKey(type, offered)
-                        if (!accepted) rejected = true
-                        accepted
+        fun prepare(): SSHClient {
+            val client = SSHClient(DefaultConfig())
+            client.connectTimeout = 15_000
+            client.timeout = 30_000
+            // sshj starts the keep-alive thread inside connect(), and only if the
+            // interval is already non-zero: set after connecting, heartbeats never
+            // run and an idle session dies whenever the first NAT or server idle
+            // timer on the path fires.
+            client.connection.keepAlive.keepAliveInterval = 15
+
+            client.addHostKeyVerifier(
+                object : HostKeyVerifier {
+                    override fun verify(hostname: String?, p: Int, key: PublicKey): Boolean {
+                        val type = KeyType.fromKey(key).toString()
+                        val offered = openSshFingerprint(key)
+                        fingerprint = offered
+                        // The verifier runs on sshj's transport thread; the
+                        // suspending callbacks are bridged here deliberately.
+                        return runBlocking {
+                            onHandshake(type)
+                            val accepted = verifyHostKey(type, offered)
+                            if (!accepted) rejected = true
+                            accepted
+                        }
                     }
-                }
 
-                override fun findExistingAlgorithms(hostname: String?, p: Int): List<String> =
-                    emptyList()
-            },
-        )
-
-        try {
-            client.connect(host, port)
-        } catch (error: Exception) {
-            runCatching { client.close() }
-            throw error
+                    override fun findExistingAlgorithms(hostname: String?, p: Int): List<String> =
+                        emptyList()
+                },
+            )
+            return client
         }
+
+        val client = openTransport(host, port, ::prepare) { rejected }
 
         try {
             client.useCompression()
@@ -120,6 +120,34 @@ private object SshjEngine : SshEngine {
 }
 
 internal class HostKeyRejected : Exception("Host key rejected")
+
+/**
+ * Connects to the first address the name answers with that speaks SSH. sshj tries
+ * a single one, so a `.local` name — which answers with both an IPv6 and an IPv4
+ * address — hangs for the read timeout whenever the first one is the dead one. A
+ * failed client cannot be reused, hence a fresh one per address.
+ */
+private fun openTransport(
+    host: String,
+    port: Int,
+    prepare: () -> SSHClient,
+    rejected: () -> Boolean,
+): SSHClient {
+    var failure: Exception? = null
+    for (address in InetAddress.getAllByName(host)) {
+        val client = prepare()
+        try {
+            client.connect(address, port)
+            return client
+        } catch (error: Exception) {
+            runCatching { client.close() }
+            // A refused host key is the same answer from every address of a host.
+            if (rejected()) throw error
+            failure = error
+        }
+    }
+    throw failure ?: UnknownHostException(host)
+}
 
 private fun loadKeyProvider(pem: String, passphrase: String?): KeyProvider {
     val format = try {
