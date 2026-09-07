@@ -4,9 +4,6 @@ import com.example.ohmyssh.theme.QAppThemeController
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
 import com.example.ohmyssh.theme.QThemeMode
-import com.sun.jna.Function
-import com.sun.jna.NativeLibrary
-import com.sun.jna.Pointer
 
 actual fun applyPlatformTheme(mode: QThemeMode) {
     if (appPlatform != AppPlatform.MACOS) return
