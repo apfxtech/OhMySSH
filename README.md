@@ -54,6 +54,7 @@ and your desktop.
 | Serial | USB serial devices with their full line settings, remembered per adapter. |
 | History | Past connections with duration and outcome, and the commands run over each of them. |
 | System info | Load, CPU count and usage, memory, disk and uptime, probed over the live session. |
+| Agent access | An MCP server inside the running app, on loopback, so an agent drives the sessions you are watching. |
 | Settings | Theme, startup behaviour, auto-unlock, master password change, vault and history import/export, delete. |
 
 ## Vault

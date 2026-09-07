@@ -59,8 +59,11 @@ object SessionManager {
     fun liveFor(host: Host): HostSession? =
         sessions.filterIsInstance<HostSession>().firstOrNull { it.host.id == host.id }
 
-    fun open(host: Host): HostSession {
+    fun open(host: Host, agentOwned: Boolean = false): HostSession {
         val session = HostSession(host = host, identity = VaultStore.identityFor(host))
+        // Set before the record is begun: history files an agent's sessions
+        // apart, and a flag arriving after would file this one as the person's.
+        session.agentOwned = agentOwned
 
         session.onHostKeyPinned = { fingerprint ->
             currentHost(host.id)?.let { VaultStore.saveHost(it.copy(knownHostKey = fingerprint)) }
@@ -165,6 +168,7 @@ object SessionManager {
             target = session.host.endpoint,
             username = session.identity?.username,
             hostId = session.host.id,
+            agent = session.agentOwned,
             osId = session.profile?.osId ?: session.host.osId,
         )
         is SerialSession -> HistoryStore.begin(
@@ -172,12 +176,14 @@ object SessionManager {
             kind = ConnectionKind.SERIAL,
             label = session.device.displayLabel,
             target = "${serialPortName(session.device.path)} · ${session.device.lineSettings}",
+            agent = session.agentOwned,
         )
         else -> HistoryStore.begin(
             sessionId = session.id,
             kind = ConnectionKind.SSH,
             label = session.title,
             target = session.subtitle,
+            agent = session.agentOwned,
         )
     }
 

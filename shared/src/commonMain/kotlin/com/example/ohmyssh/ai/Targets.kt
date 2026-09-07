@@ -100,8 +100,7 @@ object Targets {
             return open
         }
 
-        val session = SessionManager.open(host)
-        session.agentOwned = true
+        val session = SessionManager.open(host, agentOwned = true)
         awaitConnected(session, connectTimeoutMs)
         return session
     }

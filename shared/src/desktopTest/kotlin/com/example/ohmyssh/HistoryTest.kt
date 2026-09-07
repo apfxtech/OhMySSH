@@ -9,6 +9,8 @@ import com.example.ohmyssh.data.Vault
 import com.example.ohmyssh.data.VaultData
 import com.example.ohmyssh.data.kHistoryFileName
 import com.example.ohmyssh.data.kHistoryFormat
+import com.example.ohmyssh.data.kMaxAgentConnectionsKept
+import com.example.ohmyssh.data.kMaxClientConnectionsKept
 import com.example.ohmyssh.data.kMaxCommandsPerConnection
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -196,6 +198,7 @@ class HistoryTest {
             label = "web-01",
             target = "10.0.0.5",
         )
+        record.add(LoggedCommand(text = "uptime", at = 1L))
 
         assertTrue(record.isLive)
         assertEquals(emptyList(), store.past)
@@ -242,12 +245,95 @@ class HistoryTest {
         val store = freshStore()
         val open = store.begin("s1", ConnectionKind.SSH, "live", "10.0.0.1")
         val closed = store.begin("s2", ConnectionKind.SSH, "done", "10.0.0.2")
+        closed.add(LoggedCommand(text = "uptime", at = 1L))
         store.release(closed)
+
+        assertEquals(listOf(closed), store.past)
 
         store.clearAll()
 
         assertEquals(listOf(open), store.connections.toList())
         assertEquals(emptyList(), store.past)
+    }
+
+    @Test
+    fun aConnectionThatRecordedNothingIsNotKept() {
+        val store = freshStore()
+        val record = store.begin("s1", ConnectionKind.SSH, "web-01", "10.0.0.5")
+
+        store.end(record, ConnectionOutcome.DISCONNECTED)
+        store.release(record)
+
+        assertEquals(emptyList(), store.past)
+        assertEquals(emptyList(), store.connections.toList())
+    }
+
+    @Test
+    fun aFailedAttemptIsKeptThoughNothingRanOverIt() {
+        val store = freshStore()
+        val record = store.begin("s1", ConnectionKind.SSH, "web-01", "10.0.0.5")
+
+        store.end(record, ConnectionOutcome.FAILED, error = "Connection refused")
+        store.release(record)
+
+        assertEquals(listOf(record), store.past)
+    }
+
+    @Test
+    fun anEmptyConnectionNeverReachesTheFile() = runBlocking {
+        val vault = Vault.create("master", vaultPath(), VaultData())
+        val store = freshStore()
+        store.open(vault)
+
+        val quiet = store.begin("s1", ConnectionKind.SSH, "quiet-one", "10.0.0.5")
+        val busy = store.begin("s2", ConnectionKind.SSH, "busy-one", "10.0.0.6")
+        busy.add(LoggedCommand(text = "make deploy", at = 1L))
+        store.release(quiet)
+        store.release(busy)
+        store.close()
+
+        val reopened = Vault.open("master", vaultPath())
+        val raw = reopened.readSidecar(kHistoryFileName, kHistoryFormat)!!.decodeToString()
+        assertTrue(raw.contains("busy-one"))
+        assertFalse(raw.contains("quiet-one"))
+    }
+
+    @Test
+    fun whoOpenedTheConnectionSurvivesAReload() {
+        val record = ConnectionRecord(
+            id = "c4",
+            kind = ConnectionKind.SSH,
+            label = "web-01",
+            target = "10.0.0.5",
+            startedAt = 1L,
+            agent = true,
+        )
+
+        assertTrue(ConnectionRecord.fromJson(record.toJson()).agent)
+    }
+
+    @Test
+    fun anAgentsSessionsCannotPushOutTheOnesTheOwnerRan() {
+        val store = freshStore()
+        repeat(kMaxClientConnectionsKept + 10) { closed(store, "c$it", agent = false) }
+        repeat(kMaxAgentConnectionsKept + 10) { closed(store, "a$it", agent = true) }
+
+        assertEquals(kMaxClientConnectionsKept, store.clientPast.size)
+        assertEquals(kMaxAgentConnectionsKept, store.agentPast.size)
+        assertEquals("c${kMaxClientConnectionsKept + 9}", store.clientPast.first().label)
+        assertEquals("a${kMaxAgentConnectionsKept + 9}", store.agentPast.first().label)
+    }
+
+    private fun closed(store: HistoryStore, label: String, agent: Boolean) {
+        val record = store.begin(
+            sessionId = label,
+            kind = ConnectionKind.SSH,
+            label = label,
+            target = "10.0.0.1",
+            agent = agent,
+        )
+        record.add(LoggedCommand(text = "uptime", at = 0L))
+        store.release(record)
     }
 
     @Test

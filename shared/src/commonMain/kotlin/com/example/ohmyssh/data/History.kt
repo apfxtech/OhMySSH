@@ -13,7 +13,14 @@ const val kMaxCommandLength = 2000
 
 const val kMaxCommandsPerConnection = 2000
 
-const val kMaxConnectionsKept = 300
+/**
+ * How many closed connections are kept, counted separately for the person's own
+ * sessions and an agent's. One shared cap let a busy agent push every session
+ * someone worked in themselves out of the list.
+ */
+const val kMaxClientConnectionsKept = 50
+
+const val kMaxAgentConnectionsKept = 25
 
 enum class ConnectionKind {
     SSH,
@@ -95,6 +102,8 @@ class ConnectionRecord(
     val startedAt: Long,
     val username: String? = null,
     val hostId: String? = null,
+    /** Whether an agent opened this connection rather than the person here. */
+    val agent: Boolean = false,
     osId: String? = null,
 ) {
     var osId: String? by mutableStateOf(osId)
@@ -127,6 +136,15 @@ class ConnectionRecord(
 
     val isLive: Boolean get() = liveSessionId != null
 
+    /**
+     * A connection that recorded nothing is not history — an agent probe, or a
+     * window opened and shut, leaves a row saying only that it happened, and
+     * enough of them bury the sessions someone actually worked in. A failed
+     * attempt is kept: its error is the whole of its content.
+     */
+    val worthKeeping: Boolean
+        get() = commands.isNotEmpty() || outcome == ConnectionOutcome.FAILED
+
     val isConnected: Boolean get() = outcome == ConnectionOutcome.OPEN
 
     val durationMs: Long? get() = endedAt?.let { it - startedAt }
@@ -147,6 +165,7 @@ class ConnectionRecord(
         put("startedAt", startedAt)
         username?.let { put("username", it) }
         hostId?.let { put("hostId", it) }
+        if (agent) put("agent", true)
         osId?.let { put("osId", it) }
         endedAt?.let { put("endedAt", it) }
         networkId?.let { put("networkId", it) }
@@ -168,6 +187,7 @@ class ConnectionRecord(
                 startedAt = json.long("startedAt") ?: 0L,
                 username = json.str("username"),
                 hostId = json.str("hostId"),
+                agent = json.bool("agent") ?: false,
                 osId = json.str("osId"),
             )
             record.endedAt = json.long("endedAt")

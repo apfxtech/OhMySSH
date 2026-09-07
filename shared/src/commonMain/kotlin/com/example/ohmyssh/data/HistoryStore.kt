@@ -47,6 +47,12 @@ object HistoryStore {
 
     val past: List<ConnectionRecord> get() = connections.filter { !it.isLive }
 
+    /** Closed connections the person opened themselves. */
+    val clientPast: List<ConnectionRecord> get() = past.filter { !it.agent }
+
+    /** Closed connections an agent opened, kept and capped apart from the above. */
+    val agentPast: List<ConnectionRecord> get() = past.filter { it.agent }
+
     fun open(vault: Vault) {
         this.vault = vault
         connections.clear()
@@ -71,7 +77,10 @@ object HistoryStore {
             emptyList()
         }
 
-        connections.addAll(loaded.sortedByDescending { it.startedAt })
+        // Filtered on the way in, not only on the way out: a file written
+        // before empty connections were dropped is full of them.
+        connections.addAll(loaded.filter { it.worthKeeping }.sortedByDescending { it.startedAt })
+        trim()
         Log.info("history", "${connections.size} past connections")
     }
 
@@ -103,7 +112,7 @@ object HistoryStore {
             .orEmpty()
 
         val known = connections.mapTo(HashSet()) { it.id }
-        val fresh = incoming.filter { it.id !in known }
+        val fresh = incoming.filter { it.id !in known && it.worthKeeping }
         if (fresh.isEmpty()) return 0
 
         val merged = (connections.toList() + fresh).sortedByDescending { it.startedAt }
@@ -121,6 +130,7 @@ object HistoryStore {
         target: String,
         username: String? = null,
         hostId: String? = null,
+        agent: Boolean = false,
         osId: String? = null,
     ): ConnectionRecord {
         val record = ConnectionRecord(
@@ -131,6 +141,7 @@ object HistoryStore {
             startedAt = epochMillis(),
             username = username,
             hostId = hostId,
+            agent = agent,
             osId = osId,
         )
         record.liveSessionId = sessionId
@@ -160,6 +171,9 @@ object HistoryStore {
             record.endedAt = epochMillis()
             record.outcome = ConnectionOutcome.DISCONNECTED
         }
+        // Dropped as the session lets go of it rather than at save time, so the
+        // list never shows a row for a connection that recorded nothing.
+        if (!record.worthKeeping) connections.remove(record)
         requestSave()
     }
 
@@ -178,8 +192,13 @@ object HistoryStore {
     }
 
     private fun trim() {
-        while (connections.size > kMaxConnectionsKept) {
-            val oldest = connections.lastOrNull { !it.isLive } ?: return
+        trim(agent = false, keep = kMaxClientConnectionsKept)
+        trim(agent = true, keep = kMaxAgentConnectionsKept)
+    }
+
+    private fun trim(agent: Boolean, keep: Int) {
+        while (connections.count { it.agent == agent } > keep) {
+            val oldest = connections.lastOrNull { it.agent == agent && !it.isLive } ?: return
             connections.remove(oldest)
         }
     }
@@ -188,7 +207,7 @@ object HistoryStore {
         val target = vault ?: return
         // Snapshot before encoding: these are Compose state lists and the UI
         // thread may be appending to them while this runs.
-        val snapshot = connections.toList()
+        val snapshot = connections.filter { it.worthKeeping }
 
         if (snapshot.isEmpty()) {
             runCatching { target.deleteSidecar(kHistoryFileName) }

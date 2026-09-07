@@ -67,7 +67,9 @@ fun SessionsListPage() {
     val navigator = LocalNavigator.current
     val scope = rememberCoroutineScope()
     val sessions = SessionManager.sessions
-    val past = HistoryStore.past
+    val past = HistoryStore.clientPast
+    val agentPast = HistoryStore.agentPast
+
     LaunchedEffect(Unit) { NetworkWatcher.refresh() }
 
     QScaffold(
@@ -90,7 +92,7 @@ fun SessionsListPage() {
             }
         },
     ) {
-        if (sessions.isEmpty() && past.isEmpty()) {
+        if (sessions.isEmpty() && past.isEmpty() && agentPast.isEmpty()) {
             QEmptyView(
                 icon = Icons.Filled.Terminal,
                 title = "Nothing open",
@@ -107,7 +109,7 @@ fun SessionsListPage() {
         ) {
             if (sessions.isNotEmpty()) {
                 GroupedCardList(
-                    title = if (past.isEmpty()) null else "Open",
+                    title = if (past.isEmpty() && agentPast.isEmpty()) null else "Open",
                     items = sessions.toList(),
                     onTap = { session ->
                         {
@@ -124,6 +126,18 @@ fun SessionsListPage() {
                 GroupedCardList(
                     title = "History",
                     items = past,
+                    onTap = { record ->
+                        { navigator.push { CommandHistoryPage(record.id) } }
+                    },
+                    itemBuilder = { record -> HistoryRow(record) },
+                )
+            }
+
+            if (agentPast.isNotEmpty()) {
+                if (sessions.isNotEmpty() || past.isNotEmpty()) Spacer(Modifier.height(18.dp))
+                GroupedCardList(
+                    title = "Agent history",
+                    items = agentPast,
                     onTap = { record ->
                         { navigator.push { CommandHistoryPage(record.id) } }
                     },
