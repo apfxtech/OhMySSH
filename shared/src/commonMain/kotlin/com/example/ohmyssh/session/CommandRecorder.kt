@@ -54,6 +54,19 @@ class CommandRecorder(
 
     private var submitted = false
 
+    /**
+     * Set for the one input that follows, by whoever is about to write it.
+     *
+     * A command an agent pasted reaches the shell as keystrokes and comes back
+     * echoed like any other, so the screen cannot tell it from typing. The
+     * writer can, and says so in the same synchronous call that sends it.
+     */
+    private var writingForAgent = false
+
+    fun attributeNextInput(agent: Boolean) {
+        writingForAgent = agent
+    }
+
     fun attach() {
         terminal.onInput = ::onKeys
         terminal.onShellSignal = ::onShellSignal
@@ -76,6 +89,7 @@ class CommandRecorder(
             text = clean.take(kMaxCommandLength),
             at = now(),
             cwd = cwd,
+            agent = true,
             exitCode = exitCode,
             durationMs = durationMs,
         )
@@ -196,6 +210,7 @@ class CommandRecorder(
             text = text.take(kMaxCommandLength),
             at = at,
             cwd = cwd,
+            agent = writingForAgent,
         )
         running = command
         runningSince = at

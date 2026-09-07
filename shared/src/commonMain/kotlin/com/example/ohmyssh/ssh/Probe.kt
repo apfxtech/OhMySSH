@@ -39,6 +39,11 @@ class HostProfile(
     val kernel: String? = null,
     val arch: String? = null,
     val hostname: String? = null,
+    /// Who the shell actually runs as, which is not always the login the vault
+    /// holds: a jump config or a forced command can land elsewhere, and every
+    /// relative path afterwards is read against the wrong home.
+    val user: String? = null,
+    val home: String? = null,
     val metrics: HostMetrics = HostMetrics(),
 )
 
@@ -104,7 +109,7 @@ suspend fun probeHost(connection: SshConnection): HostProfile {
 }
 
 private suspend fun tryRun(connection: SshConnection, command: String): String = try {
-    connection.exec(command, probeTimeout.inWholeMilliseconds)
+    connection.exec(command, probeTimeout.inWholeMilliseconds).stdout
 } catch (error: Exception) {
     // A missing command is normal — that is how the family is detected.
     Log.info("probe", "command failed, treating as empty: $command ($error)")
@@ -115,6 +120,8 @@ private suspend fun probeLinux(connection: SshConnection): HostProfile {
     val script = """
 echo "@@osrelease"; cat /etc/os-release 2>/dev/null
 echo "@@kernel"; uname -r 2>/dev/null; uname -m 2>/dev/null; hostname 2>/dev/null
+echo "@@user"; id -un 2>/dev/null
+echo "@@home"; printf '%s\n' "${'$'}HOME"
 echo "@@load"; cat /proc/loadavg 2>/dev/null
 echo "@@cpus"; nproc 2>/dev/null
 echo "@@mem"; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null
@@ -136,6 +143,8 @@ echo "@@disk"; df -Pk / 2>/dev/null | tail -1
         kernel = kernelLines.getOrNull(0),
         arch = kernelLines.getOrNull(1),
         hostname = kernelLines.getOrNull(2),
+        user = sections["user"]?.firstOrNull(),
+        home = sections["home"]?.firstOrNull(),
         metrics = HostMetrics(
             load1 = load?.getOrNull(0),
             load5 = load?.getOrNull(1),
@@ -154,6 +163,8 @@ private suspend fun probeMacos(connection: SshConnection): HostProfile {
     val script = """
 echo "@@sw"; sw_vers -productName 2>/dev/null; sw_vers -productVersion 2>/dev/null
 echo "@@kernel"; uname -r 2>/dev/null; uname -m 2>/dev/null; hostname 2>/dev/null
+echo "@@user"; id -un 2>/dev/null
+echo "@@home"; printf '%s\n' "${'$'}HOME"
 echo "@@load"; sysctl -n vm.loadavg 2>/dev/null
 echo "@@cpus"; sysctl -n hw.ncpu 2>/dev/null
 echo "@@mem"; sysctl -n hw.memsize 2>/dev/null
@@ -179,6 +190,8 @@ echo "@@disk"; df -Pk / 2>/dev/null | tail -1
         kernel = kernelLines.getOrNull(0),
         arch = kernelLines.getOrNull(1),
         hostname = kernelLines.getOrNull(2),
+        user = sections["user"]?.firstOrNull(),
+        home = sections["home"]?.firstOrNull(),
         metrics = HostMetrics(
             load1 = load?.getOrNull(0),
             load5 = load?.getOrNull(1),
@@ -195,6 +208,8 @@ echo "@@disk"; df -Pk / 2>/dev/null | tail -1
 private suspend fun probeBsd(connection: SshConnection, kernelName: String): HostProfile {
     val script = """
 echo "@@kernel"; uname -r 2>/dev/null; uname -m 2>/dev/null; hostname 2>/dev/null
+echo "@@user"; id -un 2>/dev/null
+echo "@@home"; printf '%s\n' "${'$'}HOME"
 echo "@@load"; sysctl -n vm.loadavg 2>/dev/null
 echo "@@cpus"; sysctl -n hw.ncpu 2>/dev/null
 echo "@@mem"; sysctl -n hw.physmem 2>/dev/null
@@ -214,6 +229,8 @@ echo "@@disk"; df -Pk / 2>/dev/null | tail -1
         kernel = kernelLines.getOrNull(0),
         arch = kernelLines.getOrNull(1),
         hostname = kernelLines.getOrNull(2),
+        user = sections["user"]?.firstOrNull(),
+        home = sections["home"]?.firstOrNull(),
         metrics = HostMetrics(
             load1 = load?.getOrNull(0),
             load5 = load?.getOrNull(1),
@@ -236,6 +253,7 @@ private suspend fun probeWindows(connection: SshConnection): HostProfile {
         "\$p=(Get-CimInstance Win32_Processor|Measure-Object -Property LoadPercentage -Average).Average;" +
         "@{caption=\$o.Caption;version=\$o.Version;arch=\$o.OSArchitecture;" +
         "host=\$c.Name;cpus=\$c.NumberOfLogicalProcessors;cpuPercent=\$p;" +
+        "user=\$env:USERNAME;home=\$env:USERPROFILE;" +
         "memTotalKb=\$o.TotalVisibleMemorySize;memFreeKb=\$o.FreePhysicalMemory;" +
         "uptimeSec=[int]((Get-Date)-\$o.LastBootUpTime).TotalSeconds;" +
         "diskTotalB=\$d.Size;diskFreeB=\$d.FreeSpace}" +
@@ -264,6 +282,8 @@ private suspend fun probeWindows(connection: SshConnection): HostProfile {
         kernel = text("version"),
         arch = text("arch"),
         hostname = text("host"),
+        user = text("user")?.takeIf { it.isNotBlank() },
+        home = text("home")?.takeIf { it.isNotBlank() },
         metrics = HostMetrics(
             cpuPercent = num("cpuPercent"),
             cpuCount = num("cpus")?.toInt(),

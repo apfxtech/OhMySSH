@@ -13,6 +13,22 @@ interface SshEngine {
     ): SshConnection
 }
 
+/**
+ * What one command left behind.
+ *
+ * stdout alone cannot tell "printed nothing" apart from "shell could not run
+ * it": both arrive empty, and the second one is a wrong diagnosis waiting to
+ * happen. [stderr] and [exitCode] are carried beside it, and [trouble] says the
+ * channel died or the clock ran out before the command ended — whatever had
+ * arrived by then is still in [stdout] rather than thrown away with the error.
+ */
+class ExecResult(
+    val stdout: String,
+    val stderr: String = "",
+    val exitCode: Int? = null,
+    val trouble: String? = null,
+)
+
 interface SshConnection {
     val fingerprint: String?
 
@@ -25,7 +41,7 @@ interface SshConnection {
         onClosed: () -> Unit,
     ): SshShell
 
-    suspend fun exec(command: String, timeoutMillis: Long): String
+    suspend fun exec(command: String, timeoutMillis: Long): ExecResult
 
     suspend fun openSftp(): SftpChannel
 

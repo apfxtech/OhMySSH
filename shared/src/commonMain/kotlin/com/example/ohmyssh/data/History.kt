@@ -51,6 +51,10 @@ class LoggedCommand(
     val text: String,
     val at: Long,
     val cwd: String? = null,
+    /// Whether an agent produced this rather than the person at the keyboard.
+    /// A block an agent pasted is echoed and recorded exactly like typing, so
+    /// without this the history cannot answer who ran it.
+    val agent: Boolean = false,
     exitCode: Int? = null,
     durationMs: Long? = null,
 ) {
@@ -66,6 +70,7 @@ class LoggedCommand(
         put("text", text)
         put("at", at)
         cwd?.let { put("cwd", it) }
+        if (agent) put("agent", true)
         exitCode?.let { put("exit", it) }
         durationMs?.let { put("ms", it) }
     }
@@ -75,6 +80,7 @@ class LoggedCommand(
             text = json.str("text") ?: "",
             at = json.long("at") ?: 0L,
             cwd = json.str("cwd"),
+            agent = json.bool("agent") ?: false,
             exitCode = json.int("exit"),
             durationMs = json.long("ms"),
         )

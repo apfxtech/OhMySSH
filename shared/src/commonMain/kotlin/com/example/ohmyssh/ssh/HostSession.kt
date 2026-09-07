@@ -251,7 +251,7 @@ class HostSession(
 
     /// Runs one command on its own channel, so the user's interactive shell and
     /// its scrollback stay untouched by whatever else is driving the session.
-    suspend fun exec(command: String, timeoutMillis: Long = 30_000): String {
+    suspend fun exec(command: String, timeoutMillis: Long = 30_000): ExecResult {
         val active = connection ?: throw SessionError("Not connected")
         if (state != SessionState.CONNECTED) throw SessionError("Session is not connected")
         return active.exec(command, timeoutMillis)

@@ -4,10 +4,14 @@ import com.example.ohmyssh.services.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.Buffer
@@ -235,11 +239,19 @@ private class SshjConnection(
         SshjShell(session, shell)
     }
 
-    private fun pump(stream: InputStream, onData: (String) -> Unit, onClosed: (() -> Unit)?) {
+    /**
+     * Reads a stream to EOF as UTF-8 and returns whatever ended it, or null at
+     * a clean EOF.
+     *
+     * A multi-byte character split across two reads is held back until the rest
+     * of it arrives; decoding the halves separately would put a replacement
+     * character in the middle of the output.
+     */
+    private fun readUtf8(stream: InputStream, onText: (String) -> Unit): Exception? {
         val buffer = ByteArray(8192)
         val carry = ByteArray(4)
         var carrySize = 0
-        try {
+        return try {
             while (true) {
                 val read = stream.read(buffer)
                 if (read < 0) break
@@ -254,27 +266,72 @@ private class SshjConnection(
                 carrySize = combined.size - complete
                 if (carrySize > 0) combined.copyInto(carry, 0, complete, combined.size)
                 if (complete > 0) {
-                    onData(String(combined, 0, complete, Charsets.UTF_8))
+                    onText(String(combined, 0, complete, Charsets.UTF_8))
                 }
             }
+            null
         } catch (error: Exception) {
-            Log.info("ssh", "stream ended: ${error.message ?: error}")
-        } finally {
-            onClosed?.invoke()
+            error
         }
     }
 
-    override suspend fun exec(command: String, timeoutMillis: Long): String =
+    private fun pump(stream: InputStream, onData: (String) -> Unit, onClosed: (() -> Unit)?) {
+        val ended = readUtf8(stream, onData)
+        if (ended != null) Log.info("ssh", "stream ended: ${ended.message ?: ended}")
+        onClosed?.invoke()
+    }
+
+    override suspend fun exec(command: String, timeoutMillis: Long): ExecResult =
         withContext(Dispatchers.IO) {
             val session = client.startSession()
+            // Appended from the reader threads and read here: a plain
+            // StringBuilder would be torn by a reader still draining a channel
+            // that the timeout path closed underneath it.
+            val out = StringBuffer()
+            val err = StringBuffer()
+            var trouble: String? = null
+            var exit: Int? = null
+
             try {
                 val cmd = session.exec(command)
-                val output = cmd.inputStream.readBytes().toString(Charsets.UTF_8)
-                cmd.join(timeoutMillis, TimeUnit.MILLISECONDS)
-                output
+
+                // Draining one stream to EOF before touching the other hangs the
+                // moment the far end fills the pipe nobody is reading — a
+                // command that writes a lot to stderr would never return. Both
+                // are drained at once, and each keeps what it already got: five
+                // minutes of monitoring must not vanish because the link dropped
+                // in the sixth.
+                // On the connection's own scope, not this one: a read parked
+                // on a wedged socket ignores cancellation, and as a child of
+                // this call it would hold the caller past the timeout it asked
+                // for. Here it is bounded instead, and dies with the connection.
+                val readers = listOf(
+                    scope.async { readUtf8(cmd.inputStream) { out.append(it) } },
+                    scope.async { readUtf8(cmd.errorStream) { err.append(it) } },
+                )
+
+                val ended = withTimeoutOrNull(timeoutMillis) { readers.awaitAll() }
+                if (ended == null) {
+                    trouble = "timed out after ${timeoutMillis / 1000}s, output may be incomplete"
+                    // A thread parked in read() ignores cancellation; closing the
+                    // channel is what actually ends these two, and they have to
+                    // be done before their text is read.
+                    runCatching { session.close() }
+                    withTimeoutOrNull(2_000) { readers.joinAll() }
+                } else {
+                    trouble = ended.filterNotNull().firstOrNull()?.let {
+                        "connection dropped mid-command, output is partial: ${describe(it)}"
+                    }
+                    // Both streams are at EOF, so this only collects the exit
+                    // status the far end sends with the channel close.
+                    runCatching { cmd.join(5, TimeUnit.SECONDS) }
+                    exit = cmd.exitStatus
+                }
             } finally {
                 runCatching { session.close() }
             }
+
+            ExecResult(out.toString(), err.toString(), exit, trouble)
         }
 
     override suspend fun openSftp(): SftpChannel = withContext(Dispatchers.IO) {

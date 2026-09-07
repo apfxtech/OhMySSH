@@ -4,8 +4,16 @@ import com.example.ohmyssh.ai.AppTools
 import com.example.ohmyssh.data.AutoLogin
 import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.platform.appVersion
+import com.example.ohmyssh.platform.epochMillis
+import com.example.ohmyssh.services.FileLog
 import com.example.ohmyssh.services.Log
 import com.example.ohmyssh.session.SessionManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -19,6 +27,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.util.concurrent.ConcurrentHashMap
 
 private const val SERVER_NAME = "ohmyssh"
 
@@ -46,7 +55,13 @@ class McpServer(
     private val ownsSessions: Boolean = true,
 ) {
 
-    suspend fun serve() {
+    /// Requests still running, by the id the client gave them, so a
+    /// cancellation can find the one it names.
+    private val inFlight = ConcurrentHashMap<String, Job>()
+
+    private val writeLock = Any()
+
+    suspend fun serve(): Unit = coroutineScope {
         if (ownsSessions) unlockVault()
 
         while (true) {
@@ -67,28 +82,88 @@ class McpServer(
             val id = request["id"]
             val method = (request["method"] as? JsonPrimitive)?.contentOrNull
             if (method == null) continue
+            val params = request["params"] as? JsonObject ?: JsonObject(emptyMap())
 
             // A notification carries no id and must never draw a response — a
             // client that gets one for notifications/initialized aborts the
             // handshake.
             if (id == null || id is JsonNull) {
-                Log.info("mcp", "notification $method")
+                notification(method, params)
                 continue
             }
 
-            val response = try {
-                resultFrame(id, handle(method, request["params"] as? JsonObject ?: JsonObject(emptyMap())))
-            } catch (error: UnknownMethod) {
-                errorFrame(id, -32601, "Method not found: ${error.method}")
-            } catch (error: Exception) {
-                Log.warn("mcp", "$method failed: $error")
-                errorFrame(id, -32603, error.message ?: error.toString())
+            // Each call on its own coroutine, and never on the thread that
+            // reads the socket. Handled in turn, a cancellation could not be
+            // read until the call it cancels had already finished — which is
+            // the same as not honouring it at all.
+            val key = id.toString()
+            // call= ties the start, the end and everything the tool logged in
+            // between into one grep.
+            val label = "call=$key ${describe(method, params)}"
+            val job = launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
+                Log.info("mcp", "$label start")
+                val started = epochMillis()
+                val response = try {
+                    resultFrame(id, handle(method, params))
+                } catch (taken: CancellationException) {
+                    // The client took the call back. Answering it anyway is
+                    // forbidden, and the tool has already undone what it could.
+                    Log.info("mcp", "$label cancelled ms=${epochMillis() - started}")
+                    throw taken
+                } catch (error: UnknownMethod) {
+                    Log.warn("mcp", "$label unknown-method")
+                    errorFrame(id, -32601, "Method not found: ${error.method}")
+                } catch (error: Exception) {
+                    Log.warn("mcp", "$label failed: $error")
+                    errorFrame(id, -32603, error.message ?: error.toString())
+                }
+                Log.info("mcp", "$label done ms=${epochMillis() - started}")
+                send(response)
             }
-            send(response)
+            // Registered before it can run, or a call that finishes at once
+            // would clear an entry that has not been made yet.
+            inFlight[key] = job
+            job.invokeOnCompletion { inFlight.remove(key) }
+            job.start()
         }
 
         Log.info("mcp", "client gone")
+        // A dropped client leaves nobody to answer, and a half-sent block must
+        // not carry on typing into someone's shell after it.
+        inFlight.values.forEach { it.cancel() }
         if (ownsSessions) SessionManager.closeAll()
+    }
+
+    /**
+     * Handles the frames that carry no id and take no answer.
+     *
+     * `notifications/cancelled` is the only way a client can say the user took
+     * a call back. Dropping it — which is what logging and moving on amounts to
+     * — leaves a tool running work nobody wants any more.
+     */
+    private fun notification(method: String, params: JsonObject) {
+        if (method != "notifications/cancelled") {
+            Log.info("mcp", "notification $method")
+            return
+        }
+
+        val target = params["requestId"]?.toString()
+        val job = target?.let { inFlight.remove(it) }
+        if (job == null) {
+            Log.info("mcp", "cancellation for request $target, which is not running")
+            return
+        }
+        Log.info("mcp", "cancelling request $target")
+        job.cancel()
+    }
+
+    /// What a call is written down as. A tools/call says which tool and, from
+    /// the tool's own policy, as much of its arguments as may be kept.
+    private fun describe(method: String, params: JsonObject): String {
+        if (method != "tools/call") return "method=$method"
+        val name = (params["name"] as? JsonPrimitive)?.contentOrNull ?: "?"
+        val arguments = params["arguments"] as? JsonObject ?: JsonObject(emptyMap())
+        return "tool=$name${AppTools.audit(name, arguments)}"
     }
 
     private class UnknownMethod(val method: String) : Exception(method)
@@ -105,7 +180,7 @@ class McpServer(
                 // Clients inject this into the system prompt ahead of the tool
                 // schemas; the ones that ignore it still get every rule from the
                 // tool descriptions and from the code that enforces them.
-                put("instructions", kServerInstructions)
+                put("instructions", instructions())
                 put(
                     "serverInfo",
                     buildJsonObject {
@@ -163,6 +238,15 @@ class McpServer(
         else -> throw UnknownMethod(method)
     }
 
+    /// The log is named here because a client that can read it can answer
+    /// "what actually ran, and when" without asking anyone.
+    private fun instructions(): String {
+        val path = FileLog.path ?: return kServerInstructions
+        return kServerInstructions + "\n\nEvery call, and every command that reaches a shell, " +
+            "is logged one event per line at $path — grep it rather than guessing about what " +
+            "happened earlier."
+    }
+
     private suspend fun unlockVault() {
         if (VaultStore.isUnlocked) return
         val password = AutoLogin.readPassword()
@@ -178,10 +262,15 @@ class McpServer(
         }
     }
 
+    /// Called from every request's own coroutine, so one frame must finish
+    /// before the next starts: interleaved writes would reach the client as a
+    /// line neither response can be parsed out of.
     private fun send(frame: JsonObject) {
-        output.write(json.encodeToString(JsonObject.serializer(), frame))
-        output.write("\n")
-        output.flush()
+        synchronized(writeLock) {
+            output.write(json.encodeToString(JsonObject.serializer(), frame))
+            output.write("\n")
+            output.flush()
+        }
     }
 
     private fun resultFrame(id: JsonElement, result: JsonObject): JsonObject = buildJsonObject {
@@ -207,5 +296,6 @@ fun main() {
     // No window is ever opened here, and AWT probing a display on a headless
     // box would abort the process before the first frame is read.
     System.setProperty("java.awt.headless", "true")
+    FileLog.install("mcp stdio $appVersion")
     runBlocking { McpServer().serve() }
 }

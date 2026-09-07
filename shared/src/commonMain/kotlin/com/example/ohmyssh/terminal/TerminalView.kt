@@ -602,6 +602,10 @@ private fun PasteStrip(paste: PasteQueue, colors: QAppColors, modifier: Modifier
         PasteWait.PROMPT -> "Waiting for prompt"
         PasteWait.NONE -> "Pasting"
     }
+    // The one live sign that these keystrokes are not the user's: the terminal
+    // itself cannot show it, since an agent's paste is echoed by the shell
+    // exactly like typing.
+    val origin = if (paste.holdsAgentWork) "Agent · " else ""
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -610,7 +614,7 @@ private fun PasteStrip(paste: PasteQueue, colors: QAppColors, modifier: Modifier
             .border(1.dp, colors.divider, shape),
     ) {
         Text(
-            "$label · ${paste.remaining} left",
+            "$origin$label · ${paste.remaining} left",
             style = TextStyle(color = colors.textSecondary, fontSize = 12.5.sp),
             modifier = Modifier.padding(start = 11.dp, end = 9.dp, top = 7.dp, bottom = 7.dp),
         )

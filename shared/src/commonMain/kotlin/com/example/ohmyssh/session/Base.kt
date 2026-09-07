@@ -35,6 +35,7 @@ abstract class TerminalSession(val id: String) {
         lastPrompt = { commands.lastPrompt },
         scope = pasteScope,
         onNotice = { AppToasts.show(it) },
+        attribute = { agent -> commands.attributeNextInput(agent) },
     )
 
     abstract val title: String

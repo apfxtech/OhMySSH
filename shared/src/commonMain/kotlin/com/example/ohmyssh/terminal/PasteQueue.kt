@@ -38,6 +38,9 @@ class PasteQueue(
     /// hand, so the queue works without one.
     private val scope: CoroutineScope? = null,
     private val onNotice: (String) -> Unit = {},
+    /// Told who a command belongs to, in the same synchronous call that sends
+    /// it, so the recorder can write down whether a person or an agent ran it.
+    private val attribute: (agent: Boolean) -> Unit = {},
 ) {
     /// Commands still to send.
     var remaining by mutableIntStateOf(0)
@@ -46,7 +49,14 @@ class PasteQueue(
     var waiting by mutableStateOf(PasteWait.NONE)
         private set
 
-    private val queue = ArrayDeque<String>()
+    /// Whether anything still queued came from an agent, so the strip can say
+    /// so while it is happening rather than only in the history afterwards.
+    var holdsAgentWork by mutableStateOf(false)
+        private set
+
+    private class Pending(val text: String, val byAgent: Boolean)
+
+    private val queue = ArrayDeque<Pending>()
     private var sentAny = false
     private var job: Job? = null
 
@@ -61,7 +71,7 @@ class PasteQueue(
      * out as typed, because that is how a password out of a manager, a token or
      * a path is pasted, and rewriting one of those would be its own bug.
      */
-    fun submit(raw: String): Int {
+    fun submit(raw: String, byAgent: Boolean = false): Int {
         val text = sanitizePasted(raw)
         if (text.isEmpty()) return 0
 
@@ -69,12 +79,12 @@ class PasteQueue(
         // there are no commands to pace and no comments to drop, and its own
         // paste handling is what the bracketed markers are for.
         if (terminal.usingAltScreen) {
-            sendRaw(text)
+            sendRaw(text, byAgent)
             return 1
         }
 
         if (!text.trimEnd('\n').contains('\n')) {
-            sendRaw(text)
+            sendRaw(text, byAgent)
             return 1
         }
 
@@ -93,8 +103,8 @@ class PasteQueue(
         warnAboutLongLines(script)
 
         if (queue.isEmpty()) sentAny = false
-        queue.addAll(script.commands)
-        remaining = queue.size
+        queue.addAll(script.commands.map { Pending(it, byAgent) })
+        syncCounters()
 
         // One command has nothing to outrun, and holding it back would strand a
         // paste made at a prompt this queue cannot recognise.
@@ -109,7 +119,7 @@ class PasteQueue(
     fun cancel() {
         val dropped = queue.size
         queue.clear()
-        remaining = 0
+        syncCounters()
         waiting = PasteWait.NONE
         job?.cancel()
         job = null
@@ -130,7 +140,7 @@ class PasteQueue(
         if (hold != PasteWait.NONE) return
 
         val command = queue.removeFirst()
-        remaining = queue.size
+        syncCounters()
         sentAny = true
         write(command)
         if (queue.isEmpty()) waiting = PasteWait.NONE
@@ -194,27 +204,49 @@ class PasteQueue(
      * A single-line paste never comes through here: that one goes out exactly
      * as it was copied, so a password without a trailing newline still waits.
      */
-    private fun write(command: String) {
+    private fun write(command: Pending) {
         // The command and its Enter go in one write: the recorder reads what it
         // logs off the screen and takes the rest of a chunk from the keys
         // themselves, so splitting them here would put a blank line in the
         // history instead of the command.
-        val text = command.replace('\n', '\r')
+        val text = command.text.replace('\n', '\r')
         // Marked before the write, not after: on a fast link the echo can be
         // back by the time sendKeys returns, and a mark taken afterwards would
         // swallow it and leave the queue waiting for an answer already given.
         markSent()
-        terminal.sendKeys("$text\r")
+        // The recorder reads this inside sendKeys, on this thread, so the claim
+        // covers only the one input it wraps — and is dropped even if the write
+        // throws, or the next thing the user typed would be logged as ours.
+        attribute(command.byAgent)
+        // The moment a command actually reaches the shell, which is the one
+        // fact the history cannot give: it records that a command ran, not when
+        // the queue let it go or who filled the queue.
+        Log.info(SCOPE, "sent by=${if (command.byAgent) "agent" else "user"} cmd=${command.text}")
+        try {
+            terminal.sendKeys("$text\r")
+        } finally {
+            attribute(false)
+        }
     }
 
     /// Straight through, wrapped in the paste markers when the program on the
     /// far end asked for them (DECSET 2004) so it can tell the text from typing.
-    private fun sendRaw(text: String) {
+    private fun sendRaw(text: String, byAgent: Boolean = false) {
         val body = text.replace('\n', '\r')
         markSent()
-        terminal.sendKeys(
-            if (terminal.bracketedPaste) "\u001B[200~$body\u001B[201~" else body,
-        )
+        attribute(byAgent)
+        try {
+            terminal.sendKeys(
+                if (terminal.bracketedPaste) "\u001B[200~$body\u001B[201~" else body,
+            )
+        } finally {
+            attribute(false)
+        }
+    }
+
+    private fun syncCounters() {
+        remaining = queue.size
+        holdsAgentWork = queue.any { it.byAgent }
     }
 
     private fun markSent() {

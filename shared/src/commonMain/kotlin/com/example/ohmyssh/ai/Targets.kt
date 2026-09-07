@@ -106,15 +106,40 @@ object Targets {
         return session
     }
 
-    /** For tools that must act on a live session rather than dial one themselves. */
+    /**
+     * For tools that must act on a live session rather than dial one themselves.
+     *
+     * A session that has since closed is not an access problem, and answering
+     * it with the refusal above says the opposite of what happened: a caller
+     * reading "agent access switched off" concludes it was locked out and
+     * reports that to the user, when all it had to do was connect again.
+     */
     fun require(target: String): HostSession {
-        val session = findSession(target) ?: throw notAvailable()
+        val session = findSession(target) ?: throw notOpen(target)
         if (session !is HostSession) throw TargetError("That session is not an SSH session")
         assertAllowed(session.host)
         if (session.state != SessionState.CONNECTED) {
-            throw TargetError("That session is ${session.statusLabel.lowercase()}")
+            throw TargetError(
+                "Session ${session.id} (${session.host.displayLabel}) is " +
+                    "${session.statusLabel.lowercase()}. Call connect to reopen it.",
+            )
         }
         return session
+    }
+
+    private fun notOpen(target: String): TargetError {
+        SessionManager.retiredLabel(target)?.let { label ->
+            return TargetError(
+                "Session '$target' ($label) has closed and its id is gone. " +
+                    "Call connect to open a new one.",
+            )
+        }
+
+        val host = findHost(target) ?: return notAvailable()
+        assertAllowed(host)
+        return TargetError(
+            "No session is open on ${host.displayLabel}. Call connect with '${host.id}' first.",
+        )
     }
 
     private suspend fun awaitConnected(session: HostSession, timeoutMs: Long) {

@@ -41,6 +41,17 @@ object SessionManager {
     fun byId(id: String): TerminalSession? = sessions.firstOrNull { it.id == id }
 
     /**
+     * What a session id used to be, for a while after it is gone.
+     *
+     * An agent holding an id from a session that has since closed would
+     * otherwise be answered as if it had named a machine that does not exist,
+     * which reads as "your access was revoked" and gets reported as one.
+     */
+    private var retired: Map<String, String> = emptyMap()
+
+    fun retiredLabel(id: String): String? = retired[id]
+
+    /**
      * A session already open on this host, for callers that must not dial a
      * second one. A serial port takes one connection, so openSerial reuses; SSH
      * takes many, and a person opening the same system twice wants two shells.
@@ -212,6 +223,15 @@ object SessionManager {
     }
 
     private suspend fun retire(session: TerminalSession) {
+        // Replaced rather than mutated: a tool call reads this map on its own
+        // thread while a session is being closed on this one.
+        val remembered = retired + (session.id to session.title)
+        retired = if (remembered.size <= 32) {
+            remembered
+        } else {
+            remembered.entries.drop(remembered.size - 32).associate { it.toPair() }
+        }
+
         session.disconnect()
         session.dispose()
         session.commands.detach()
