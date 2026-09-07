@@ -4,11 +4,13 @@ import com.example.ohmyssh.data.AuthKind
 import com.example.ohmyssh.data.Host
 import com.example.ohmyssh.data.HostGroup
 import com.example.ohmyssh.data.Identity
+import com.example.ohmyssh.data.NetworkTag
 import com.example.ohmyssh.data.Vault
 import com.example.ohmyssh.data.VaultData
 import com.example.ohmyssh.data.VaultException
 import com.example.ohmyssh.data.WrongPasswordException
 import com.example.ohmyssh.data.kVaultFormat
+import com.example.ohmyssh.net.NetworkKind
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.AfterTest
@@ -48,6 +50,7 @@ class VaultTest {
                 identityId = "i1",
                 knownHostKey = "SHA256:abc",
                 osId = "ubuntu",
+                networks = listOf("lan:3c:22:fb:01:02:03"),
             ),
         ),
         identities = listOf(
@@ -60,6 +63,16 @@ class VaultTest {
             ),
         ),
         groups = listOf(HostGroup(id = "g1", name = "Production")),
+        networks = listOf(
+            NetworkTag(
+                id = "lan:3c:22:fb:01:02:03",
+                name = "Home",
+                kind = NetworkKind.WIFI,
+                detail = "192.168.1.0/24",
+                lastSeenAt = 1700000000000,
+                named = true,
+            ),
+        ),
     )
 
     @Test
@@ -77,6 +90,10 @@ class VaultTest {
         assertEquals("SHA256:abc", data.hosts.single().knownHostKey)
         assertEquals("hunter2", data.identities.single().password)
         assertEquals("Production", data.groups.single().name)
+        assertEquals(listOf("lan:3c:22:fb:01:02:03"), data.hosts.single().networks)
+        assertEquals("Home", data.networks.single().name)
+        assertEquals(NetworkKind.WIFI, data.networks.single().kind)
+        assertTrue(data.networks.single().named)
 
         vault.save(data)
     }

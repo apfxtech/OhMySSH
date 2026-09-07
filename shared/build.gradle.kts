@@ -175,6 +175,15 @@ compose.desktop {
             macOS {
                 bundleID = "com.example.ohmyssh"
                 iconFile.set(rootProject.file("artwork/desktop/app-icon-macos.icns"))
+                // macOS blanks the Wi-Fi name for every app without a Location
+                // authorisation, so the network badges read as bare subnets
+                // until this prompt is answered. No coordinate is ever read.
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSLocationWhenInUseUsageDescription</key>
+                        <string>ohmyssh shows which Wi-Fi each system was reached on. macOS hides the network name from apps that cannot ask for your location; nothing else here uses it.</string>
+                    """.trimIndent()
+                }
             }
             windows { iconFile.set(rootProject.file("artwork/desktop/app-icon-windows.ico")) }
             linux { iconFile.set(rootProject.file("artwork/desktop/app-icon-linux.png")) }

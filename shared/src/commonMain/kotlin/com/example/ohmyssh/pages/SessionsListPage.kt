@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardList
+import com.example.ohmyssh.components.withNetwork
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QIconBadgeSvg
 import com.example.ohmyssh.components.QFloatingAction
@@ -43,6 +45,7 @@ import com.example.ohmyssh.data.ConnectionOutcome
 import com.example.ohmyssh.data.ConnectionRecord
 import com.example.ohmyssh.data.HistoryStore
 import com.example.ohmyssh.navigation.LocalNavigator
+import com.example.ohmyssh.net.NetworkWatcher
 import com.example.ohmyssh.platform.formatRelative
 import com.example.ohmyssh.serial.SerialSession
 import com.example.ohmyssh.serial.serialPortName
@@ -65,6 +68,7 @@ fun SessionsListPage() {
     val scope = rememberCoroutineScope()
     val sessions = SessionManager.sessions
     val past = HistoryStore.past
+    LaunchedEffect(Unit) { NetworkWatcher.refresh() }
 
     QScaffold(
         floatingActions = {
@@ -174,7 +178,7 @@ private fun SessionRow(session: TerminalSession) {
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    detail,
+                    withNetwork(detail, record?.networkId, record?.networkLabel),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = TextStyle(
@@ -261,7 +265,11 @@ private fun HistoryRow(record: ConnectionRecord) {
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    connectionSubtitle(record),
+                    withNetwork(
+                        connectionSubtitle(record),
+                        record.networkId,
+                        record.networkLabel,
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = TextStyle(

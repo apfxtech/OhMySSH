@@ -57,6 +57,21 @@ private object JvmLanProbe : LanProbe {
         addressFor(BEACON_ADDRESS)?.let(::sourceAddressFor)
     }
 
+    override suspend fun defaultGatewayIpv4(adapter: LanInterface?): String? =
+        withContext(Dispatchers.IO) {
+            val dump = runCommand(routeCommand(adapter?.name))
+            val gateway = parseDefaultGateway(dump, adapter?.ipv4)
+            when {
+                gateway == null || adapter == null -> gateway
+                // A tunnel that holds the default route answers with a gateway
+                // on a subnet of its own. It names the tunnel, not the LAN, and
+                // the LAN is what tells one Wi-Fi from another.
+                networkOf(gateway, adapter.prefixLength) !=
+                    networkOf(adapter.ipv4, adapter.prefixLength) -> null
+                else -> gateway
+            }
+        }
+
     override suspend fun probeCanary(): ProbeCanary = withContext(Dispatchers.IO) {
         val canary = addressFor(CANARY_ADDRESS)
             ?: return@withContext ProbeCanary(answered = false, source = null)
@@ -130,14 +145,29 @@ private fun neighbourCommands(): List<List<String>> = when (appPlatform) {
     AppPlatform.IOS -> emptyList()
 }
 
-private fun runCommand(command: List<String>): String = try {
-    val process = ProcessBuilder(command).redirectErrorStream(true).start()
-    val output = process.inputStream.bufferedReader().use { it.readText() }
-    if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroy()
-    output
-} catch (error: Exception) {
-    Log.info("lan", "${command.first()} gave nothing: ${error.message}")
-    ""
+private fun routeCommand(adapter: String?): List<String> = when (appPlatform) {
+    AppPlatform.MACOS -> listOf("/sbin/route", "-n", "get", "default") +
+        (adapter?.let { listOf("-ifscope", it) } ?: emptyList())
+    AppPlatform.LINUX -> listOf("ip", "route", "show", "default") +
+        (adapter?.let { listOf("dev", it) } ?: emptyList())
+    AppPlatform.ANDROID -> listOf("/system/bin/ip", "route", "show", "default") +
+        (adapter?.let { listOf("dev", it) } ?: emptyList())
+    // Windows takes no scope, but prints the interface each route leaves by.
+    AppPlatform.WINDOWS -> listOf("route", "print", "-4")
+    AppPlatform.IOS -> emptyList()
+}
+
+internal fun runCommand(command: List<String>): String {
+    if (command.isEmpty()) return ""
+    return try {
+        val process = ProcessBuilder(command).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroy()
+        output
+    } catch (error: Exception) {
+        Log.info("lan", "${command.first()} gave nothing: ${error.message}")
+        ""
+    }
 }
 
 private val MAC_TOKEN = Regex("[0-9a-fA-F]{1,2}([:-][0-9a-fA-F]{1,2}){5}")

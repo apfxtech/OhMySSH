@@ -18,9 +18,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.PersonAddAlt
+import androidx.compose.material.icons.outlined.AddLink
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
@@ -30,11 +32,15 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -49,16 +55,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.QIconBadge
+import com.example.ohmyssh.components.nameNetwork
+import com.example.ohmyssh.components.networkIcon
+import com.example.ohmyssh.components.networkLabel
 import com.example.ohmyssh.components.QPageAppBar
 import com.example.ohmyssh.components.QPageAppBarAction
 import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.data.AuthKind
 import com.example.ohmyssh.data.Host
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Circle
 import com.example.ohmyssh.data.HostGroup
 import com.example.ohmyssh.data.Identity
 import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.data.newId
 import com.example.ohmyssh.navigation.LocalNavigator
+import com.example.ohmyssh.net.NetworkWatcher
+import com.example.ohmyssh.net.networkKind
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.widgets.CredentialsEditor
@@ -102,7 +115,12 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
     var agentMayAuthenticate by rememberSaveable(host?.id) {
         mutableStateOf(initial?.agentMayAuthenticate ?: false)
     }
+    val networks = remember(host?.id) {
+        mutableStateListOf<String>().apply { addAll(initial?.networks ?: emptyList()) }
+    }
     val credentials = rememberCredentialsState(host?.inlineIdentity)
+
+    LaunchedEffect(Unit) { NetworkWatcher.refresh() }
 
     suspend fun save() {
         val trimmedHost = hostname.trim()
@@ -139,6 +157,7 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
                 knownHostKey = knownHostKey,
                 osId = host?.osId,
                 osPretty = host?.osPretty,
+                networks = networks.toList(),
                 agentEnabled = agentEnabled,
                 agentMayAuthenticate = agentEnabled && agentMayAuthenticate,
             ),
@@ -363,6 +382,23 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
                 },
             )
 
+            // Nothing to show and nothing to add: a device with no network at
+            // all gets no empty section for one.
+            if (networks.isNotEmpty() || NetworkWatcher.current != null) {
+                QFormLabel("Networks")
+                NetworksCard(
+                    networks = networks,
+                    onRename = { id -> scope.launch { nameNetwork(id) } },
+                    onRemove = { networks.remove(it) },
+                    onAdd = { key ->
+                        networks.add(0, key)
+                        // Saved now rather than on the next connect, or the chip
+                        // would have nothing but a router MAC to call itself by.
+                        scope.launch { NetworkWatcher.currentTag() }
+                    },
+                )
+            }
+
             QFormLabel("Notes")
             QTextField(
                 value = note,
@@ -445,6 +481,82 @@ internal fun PickerCard(
             tint = colors.textMuted,
             modifier = Modifier.size(20.dp),
         )
+    }
+}
+
+/**
+ * The networks this system answers on. Filled in on every connect, so the manual
+ * side is mostly correcting: dropping the coffee shop it was reached from once,
+ * or naming a network the OS would only give up as a subnet.
+ */
+@Composable
+private fun NetworksCard(
+    networks: List<String>,
+    onRename: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onAdd: (String) -> Unit,
+) {
+    val colors = appColors
+    val current = NetworkWatcher.current
+
+    Column(Modifier.fillMaxWidth()) {
+        if (networks.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().background(colors.card, RoundedCornerShape(12.dp))) {
+                for (id in networks) {
+                    val here = NetworkWatcher.current?.key == id
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onRename(id) }
+                            .padding(start = 12.dp, top = 7.dp, end = 6.dp, bottom = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            networkIcon(networkKind(id)),
+                            contentDescription = null,
+                            tint = if (here) colors.accent else colors.textMuted,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            networkLabel(id),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                            style = TextStyle(
+                                color = if (here) colors.accent else colors.textPrimary,
+                                fontSize = 13.5.sp,
+                                fontWeight = if (here) FontWeight.W600 else FontWeight.W500,
+                            ),
+                        )
+                        IconButton(onClick = { onRemove(id) }) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "Remove ${networkLabel(id)}",
+                                tint = colors.textMuted,
+                                modifier = Modifier.size(15.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (current != null && networks.none { it == current.key }) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                TextButton(
+                    onClick = { onAdd(current.key) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+                ) {
+                    Icon(
+                        Icons.Outlined.AddLink,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add ${networkLabel(current.key)}")
+                }
+            }
+        }
     }
 }
 

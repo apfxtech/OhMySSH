@@ -12,10 +12,7 @@ actual fun applyPlatformTheme(mode: QThemeMode) {
     if (appPlatform != AppPlatform.MACOS) return
     runCatching {
         val appearance = mode.nsAppearanceName?.let { name ->
-            ObjC.send(
-                ObjC.cls("NSAppearance"), "appearanceNamed:",
-                ObjC.send(ObjC.cls("NSString"), "stringWithUTF8String:", name),
-            )
+            ObjC.send(ObjC.cls("NSAppearance"), "appearanceNamed:", ObjC.string(name))
         }
         val app = ObjC.send(ObjC.cls("NSApplication"), "sharedApplication")
         // AppKit only accepts appearance changes on its own thread — and the
@@ -45,18 +42,6 @@ private val QThemeMode.nsAppearanceName: String?
         QThemeMode.DARK -> "NSAppearanceNameDarkAqua"
         QThemeMode.LIGHT -> "NSAppearanceNameAqua"
     }
-
-private object ObjC {
-    private val objc = NativeLibrary.getInstance("objc")
-    private val getClass: Function = objc.getFunction("objc_getClass")
-    private val registerSel: Function = objc.getFunction("sel_registerName")
-    private val msgSend: Function = objc.getFunction("objc_msgSend")
-
-    fun cls(name: String): Pointer = getClass.invokePointer(arrayOf(name))
-    fun sel(name: String): Pointer = registerSel.invokePointer(arrayOf(name))
-    fun send(receiver: Pointer?, selector: String, vararg args: Any?): Pointer? =
-        msgSend.invokePointer(arrayOf(receiver, sel(selector), *args))
-}
 
 actual val platformSupportsDynamicColors: Boolean
     get() = false

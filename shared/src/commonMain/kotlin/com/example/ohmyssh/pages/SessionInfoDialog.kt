@@ -48,6 +48,8 @@ import androidx.compose.ui.window.Dialog
 import com.example.ohmyssh.components.GroupedCardGrid
 import com.example.ohmyssh.components.GroupedCardList
 import com.example.ohmyssh.components.QIconBadgeSvg
+import com.example.ohmyssh.data.HistoryStore
+import com.example.ohmyssh.net.networkDescription
 import com.example.ohmyssh.services.Log
 import com.example.ohmyssh.ssh.HostMetrics
 import com.example.ohmyssh.ssh.HostProfile
@@ -207,6 +209,11 @@ private fun details(session: HostSession, profile: HostProfile?): List<DetailRow
     profile?.hostname?.let { add(DetailRow("Hostname", it)) }
     add(DetailRow("Address", session.host.endpoint))
     session.identity?.let { add(DetailRow("User", it.username)) }
+    HistoryStore.forSession(session.id)?.let { record ->
+        record.networkId?.let {
+            add(DetailRow("Network", networkDescription(it, record.networkLabel)))
+        }
+    }
     profile?.kernel?.let { add(DetailRow("Kernel", it)) }
     profile?.arch?.let { add(DetailRow("Architecture", it)) }
     profile?.metrics?.cpuCount?.let { add(DetailRow("CPUs", "$it")) }

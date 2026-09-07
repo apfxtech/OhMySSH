@@ -32,6 +32,7 @@ object VaultStore {
     val identities: List<Identity> get() = data.identities
     val groups: List<HostGroup> get() = data.groups
     val serialDevices: List<SerialDevice> get() = data.serialDevices
+    val networks: List<NetworkTag> get() = data.networks
 
     fun vaultExists(): Boolean = Vault.exists()
 
@@ -92,6 +93,9 @@ object VaultStore {
     fun identityById(id: String?): Identity? =
         id?.let { wanted -> data.identities.firstOrNull { it.id == wanted } }
 
+    fun networkById(id: String?): NetworkTag? =
+        id?.let { wanted -> data.networks.firstOrNull { it.id == wanted } }
+
     fun groupById(id: String?): HostGroup? =
         id?.let { wanted -> data.groups.firstOrNull { it.id == wanted } }
 
@@ -136,6 +140,23 @@ object VaultStore {
             hosts = data.hosts.map { if (it.groupId == id) it.copy(groupId = null) else it },
             groups = data.groups.filter { it.id != id },
         )
+    }
+
+    suspend fun saveNetwork(tag: NetworkTag) = mutate {
+        data = data.copy(networks = upsert(data.networks, tag) { it.id })
+    }
+
+    /**
+     * Files [host] under [networkId], newest first. A system that has been
+     * reached on five networks keeps the four most recent, and one already on
+     * the list is left where it is rather than rewriting the vault per connect.
+     */
+    suspend fun rememberNetwork(hostId: String, networkId: String) {
+        val host = data.hosts.firstOrNull { it.id == hostId } ?: return
+        if (host.networks.firstOrNull() == networkId) return
+        val networks = (listOf(networkId) + host.networks.filter { it != networkId })
+            .take(kMaxHostNetworks)
+        saveHost(host.copy(networks = networks))
     }
 
     suspend fun saveSerialDevice(device: SerialDevice) = mutate {
@@ -210,12 +231,20 @@ object VaultStore {
             }
         }
 
+        // Names the imported systems point at. A local name for the same network
+        // wins, or importing a vault would rename the network under your feet.
+        val networks = data.networks.toMutableList()
+        for (tag in incoming.networks) {
+            if (networks.none { it.id == tag.id }) networks.add(tag)
+        }
+
         mutate {
             data = VaultData(
                 hosts = hosts,
                 identities = identities,
                 groups = groups,
                 serialDevices = serialDevices,
+                networks = networks,
             )
         }
 

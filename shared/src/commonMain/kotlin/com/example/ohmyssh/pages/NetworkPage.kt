@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,9 @@ import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.QCol
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QIconBadgeSvg
+import com.example.ohmyssh.components.QPageAppBarAction
+import com.example.ohmyssh.components.nameNetwork
+import com.example.ohmyssh.components.networkIcon
 import com.example.ohmyssh.components.QPageAppBar
 import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.components.QTableCellText
@@ -70,12 +74,16 @@ import com.example.ohmyssh.data.newId
 import com.example.ohmyssh.navigation.LocalNavigator
 import com.example.ohmyssh.net.LanDevice
 import com.example.ohmyssh.net.LanScanner
+import com.example.ohmyssh.net.NetworkWatcher
+import com.example.ohmyssh.net.networkKind
+import com.example.ohmyssh.net.networkName
 import com.example.ohmyssh.platform.AppPlatform
 import com.example.ohmyssh.platform.appPlatform
 import com.example.ohmyssh.ssh.osColorValue
 import com.example.ohmyssh.ssh.osIconAsset
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.widgets.QEmptyView
+import kotlinx.coroutines.launch
 
 private val NETWORK_COLUMNS = listOf(
     QCol("Host", 0.dp, sortKey = "host"),
@@ -90,6 +98,7 @@ private val NETWORK_COLUMNS = listOf(
 fun NetworkPage() {
     val colors = appColors
     val navigator = LocalNavigator.current
+    val scope = rememberCoroutineScope()
 
     var query by remember { mutableStateOf("") }
     var sortKey by remember { mutableStateOf("ipv4") }
@@ -97,6 +106,17 @@ fun NetworkPage() {
 
     LaunchedEffect(Unit) {
         if (!LanScanner.hasSwept) LanScanner.refresh()
+        NetworkWatcher.refresh()
+    }
+
+    fun rescan() {
+        LanScanner.refresh()
+        // The sweep is also the moment to look again at which network this is:
+        // a laptop that changed Wi-Fi is exactly the one being rescanned.
+        scope.launch {
+            NetworkWatcher.invalidate()
+            NetworkWatcher.refresh()
+        }
     }
 
     val devices = LanScanner.devices
@@ -111,7 +131,15 @@ fun NetworkPage() {
                 title = "Network",
                 subtitle = statusLine(),
                 actions = {
-                    ScanPill(scanning = LanScanner.scanning, onTap = { LanScanner.refresh() })
+                    NetworkWatcher.current?.let { network ->
+                        QPageAppBarAction(
+                            tooltip = "Name this network",
+                            icon = networkIcon(networkKind(network.key)),
+                            iconSize = 18.dp,
+                            onPressed = { scope.launch { nameNetwork(network.key) } },
+                        )
+                    }
+                    ScanPill(scanning = LanScanner.scanning, onTap = { rescan() })
                     CountPill(shown = rows.size, total = devices.size)
                 },
             )
@@ -135,7 +163,7 @@ fun NetworkPage() {
 
                 PullToRefreshBox(
                     isRefreshing = LanScanner.scanning,
-                    onRefresh = { LanScanner.refresh() },
+                    onRefresh = { rescan() },
                     // The bar under the app bar already carries the sweep; a second
                     // spinner riding down with the gesture just doubles it up.
                     indicator = {},
@@ -404,10 +432,11 @@ private val AppPlatform.isMobile: Boolean
 private fun statusLine(): String {
     val subnet = LanScanner.subnet
     val adapter = LanScanner.interfaceName?.ifEmpty { null }
+    val network = NetworkWatcher.current?.key?.let { networkName(it) }?.ifEmpty { null }
     return when {
         LanScanner.scanning ->
             "${subnet ?: "Local network"} · ${LanScanner.probed}/${LanScanner.total} probed"
-        subnet != null -> listOfNotNull(subnet, adapter).joinToString(" · ")
+        subnet != null -> listOfNotNull(network, subnet, adapter).joinToString(" · ")
         else -> "Not scanned yet"
     }
 }

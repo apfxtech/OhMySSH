@@ -27,6 +27,13 @@ interface LanProbe {
     suspend fun outboundIpv4(): String?
 
     /**
+     * The router [adapter] reaches the rest of the world through, or null when
+     * there is none on it. Scoped to the interface on purpose: a VPN holds the
+     * unscoped default route while sitting on a subnet of its own.
+     */
+    suspend fun defaultGatewayIpv4(adapter: LanInterface?): String?
+
+    /**
      * Probes an address that cannot exist. An answer means something on that
      * path answers for everything — a transparent proxy or a VPN client — so
      * probes down it carry no information; [probesAreHonest] decides whether

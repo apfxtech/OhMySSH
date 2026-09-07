@@ -106,6 +106,14 @@ class ConnectionRecord(
     var liveSessionId: String? by mutableStateOf(null)
         internal set
 
+    /** The network this connection was made on — see [NetworkTag]. */
+    var networkId: String? by mutableStateOf(null)
+        internal set
+
+    /** Its name when it was made, for a history read next to a vault without it. */
+    var networkLabel: String? by mutableStateOf(null)
+        internal set
+
     val commands = mutableStateListOf<LoggedCommand>()
 
     var droppedCommands: Int by mutableStateOf(0)
@@ -135,6 +143,8 @@ class ConnectionRecord(
         hostId?.let { put("hostId", it) }
         osId?.let { put("osId", it) }
         endedAt?.let { put("endedAt", it) }
+        networkId?.let { put("networkId", it) }
+        networkLabel?.let { put("networkLabel", it) }
         put("outcome", outcome.wireName)
         error?.let { put("error", it) }
         if (droppedCommands > 0) put("dropped", droppedCommands)
@@ -155,6 +165,8 @@ class ConnectionRecord(
                 osId = json.str("osId"),
             )
             record.endedAt = json.long("endedAt")
+            record.networkId = json.str("networkId")
+            record.networkLabel = json.str("networkLabel")
             // A session that was live when the app went away never got its
             // ending written. It is not open now, whatever the file says.
             record.outcome = ConnectionOutcome.parse(json.str("outcome"))

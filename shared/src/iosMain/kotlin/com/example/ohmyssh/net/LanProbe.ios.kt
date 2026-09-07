@@ -94,6 +94,9 @@ private object IosLanProbe : LanProbe {
         outboundAddress(AF_INET, IPV4_BEACON)
     }
 
+    /** The routing table sits behind the same sysctl iOS keeps from apps. */
+    override suspend fun defaultGatewayIpv4(adapter: LanInterface?): String? = null
+
     override suspend fun probeCanary(): ProbeCanary = withContext(sockets) {
         val source = outboundAddress(AF_INET, CANARY_ADDRESS)
         val canary = parseIpv4(CANARY_ADDRESS)

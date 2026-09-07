@@ -10,6 +10,7 @@ import com.example.ohmyssh.data.ConnectionRecord
 import com.example.ohmyssh.data.HistoryStore
 import com.example.ohmyssh.data.Host
 import com.example.ohmyssh.data.VaultStore
+import com.example.ohmyssh.net.NetworkWatcher
 import com.example.ohmyssh.serial.SerialDeviceEntry
 import com.example.ohmyssh.serial.SerialRegistry
 import com.example.ohmyssh.serial.SerialSession
@@ -112,6 +113,7 @@ object SessionManager {
 
         session.onStateChanged = { state ->
             when (state) {
+                SessionState.CONNECTED -> scope.launch { noteNetwork(session, record) }
                 SessionState.FAILED -> HistoryStore.end(
                     record,
                     ConnectionOutcome.FAILED,
@@ -120,6 +122,27 @@ object SessionManager {
                 SessionState.CLOSED -> HistoryStore.end(record, ConnectionOutcome.DISCONNECTED)
                 else -> {}
             }
+        }
+    }
+
+    /**
+     * Files the connection under the network it was made on, and files the
+     * network under the system. Done on connect rather than on open: a system
+     * that would not answer says nothing about where it can be reached from.
+     */
+    private suspend fun noteNetwork(session: TerminalSession, record: ConnectionRecord) {
+        if (session !is HostSession) return
+        try {
+            val tag = NetworkWatcher.currentTag() ?: return
+
+            record.networkId = tag.id
+            record.networkLabel = tag.name
+            HistoryStore.requestSave()
+            VaultStore.rememberNetwork(session.host.id, tag.id)
+        } catch (failure: Exception) {
+            // Which Wi-Fi this was is a nicety. A vault locked between the
+            // connect and the write must not take the session down with it.
+            Log.warn("sessions", "network not recorded: $failure")
         }
     }
 

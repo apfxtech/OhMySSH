@@ -50,6 +50,7 @@ and your desktop.
 | Terminal | VT100/xterm emulation, scrollback, alternate screen, keyboard and paste handling. |
 | Files | Remote SFTP and the local filesystem side by side, transfers with progress, text editor with binary and size guards. |
 | Network | LAN scan into a sortable table of host, IPv4/IPv6, MAC and ping, with saved systems and this device marked. |
+| Networks | Every system carries a badge for the Wi-Fi or LAN it was reached on, lit when you are on it now. Recorded on connect and identified by the router, so the badge holds whatever the network is called; macOS names the Wi-Fi once you allow it, and any network can be renamed by hand. |
 | Serial | USB serial devices with their full line settings, remembered per adapter. |
 | History | Past connections with duration and outcome, and the commands run over each of them. |
 | System info | Load, CPU count and usage, memory, disk and uptime, probed over the live session. |

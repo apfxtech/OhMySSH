@@ -1,5 +1,6 @@
 package com.example.ohmyssh.data
 
+import com.example.ohmyssh.net.NetworkKind
 import com.example.ohmyssh.platform.epochMicros
 import com.example.ohmyssh.serial.formatUsbId
 import com.example.ohmyssh.serial.serialPortName
@@ -109,6 +110,12 @@ data class Host(
     val osId: String? = null,
     val osPretty: String? = null,
     /**
+     * Networks this system has answered on, newest first — see [NetworkTag].
+     * Recorded on every connect and shown on the card, so a system that only
+     * exists behind the home router says so before the connection times out.
+     */
+    val networks: List<String> = emptyList(),
+    /**
      * Whether an agent may touch this system at all. Off for every system until
      * the owner turns it on, including ones added later — an agent that could
      * reach anything in the vault by default would be one mistaken prompt away
@@ -140,6 +147,7 @@ data class Host(
         knownHostKey?.let { put("knownHostKey", it) }
         osId?.let { put("osId", it) }
         osPretty?.let { put("osPretty", it) }
+        if (networks.isNotEmpty()) put("networks", JsonArray(networks.map(::JsonPrimitive)))
         if (agentEnabled) put("agentEnabled", true)
         if (agentMayAuthenticate) put("agentMayAuthenticate", true)
     }
@@ -157,8 +165,55 @@ data class Host(
             knownHostKey = json.str("knownHostKey"),
             osId = json.str("osId"),
             osPretty = json.str("osPretty"),
+            networks = json.arr("networks")
+                ?.mapNotNull { (it as? JsonPrimitive)?.takeIf { raw -> raw.isString }?.content }
+                ?: emptyList(),
             agentEnabled = json.bool("agentEnabled") ?: false,
             agentMayAuthenticate = json.bool("agentMayAuthenticate") ?: false,
+        )
+    }
+}
+
+/** Most networks a system keeps; the oldest drops off rather than piling up. */
+const val kMaxHostNetworks = 4
+
+/**
+ * A network a system was reached on, named.
+ *
+ * [id] is the fingerprint the network was recognised by, so it holds still while
+ * [name] is whatever its owner calls it — the auto-detected name is only ever a
+ * starting point, and on macOS and Android it is a subnet rather than an SSID.
+ */
+data class NetworkTag(
+    val id: String,
+    val name: String,
+    val kind: NetworkKind = NetworkKind.UNKNOWN,
+    val detail: String? = null,
+    val lastSeenAt: Long = 0,
+    /**
+     * Whether a person typed [name]. A detected name is replaced the moment a
+     * better one turns up — the SSID macOS hands over once it is allowed to —
+     * while a name someone chose is never overwritten.
+     */
+    val named: Boolean = false,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        put("id", id)
+        put("name", name)
+        put("kind", kind.wireName)
+        detail?.let { put("detail", it) }
+        if (lastSeenAt > 0) put("lastSeenAt", lastSeenAt)
+        if (named) put("named", true)
+    }
+
+    companion object {
+        fun fromJson(json: JsonObject): NetworkTag = NetworkTag(
+            id = json.str("id") ?: newId(),
+            name = json.str("name") ?: "",
+            kind = NetworkKind.parse(json.str("kind")),
+            detail = json.str("detail"),
+            lastSeenAt = json.long("lastSeenAt") ?: 0L,
+            named = json.bool("named") ?: false,
         )
     }
 }
@@ -289,12 +344,14 @@ data class VaultData(
     val identities: List<Identity> = emptyList(),
     val groups: List<HostGroup> = emptyList(),
     val serialDevices: List<SerialDevice> = emptyList(),
+    val networks: List<NetworkTag> = emptyList(),
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         put("hosts", JsonArray(hosts.map { it.toJson() }))
         put("identities", JsonArray(identities.map { it.toJson() }))
         put("groups", JsonArray(groups.map { it.toJson() }))
         put("serialDevices", JsonArray(serialDevices.map { it.toJson() }))
+        put("networks", JsonArray(networks.map { it.toJson() }))
     }
 
     companion object {
@@ -307,6 +364,7 @@ data class VaultData(
                 identities = parse("identities", Identity::fromJson),
                 groups = parse("groups", HostGroup::fromJson),
                 serialDevices = parse("serialDevices", SerialDevice::fromJson),
+                networks = parse("networks", NetworkTag::fromJson),
             )
         }
     }

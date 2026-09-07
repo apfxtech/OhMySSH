@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ohmyssh.components.GroupedCardList
+import com.example.ohmyssh.components.withNetwork
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QIconBadgeSvg
 import com.example.ohmyssh.components.QFloatingAction
@@ -46,6 +48,7 @@ import com.example.ohmyssh.data.Host
 import com.example.ohmyssh.data.HostGroup
 import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.navigation.LocalNavigator
+import com.example.ohmyssh.net.NetworkWatcher
 import com.example.ohmyssh.serial.SerialDeviceEntry
 import com.example.ohmyssh.serial.SerialRegistry
 import com.example.ohmyssh.session.PaneRef
@@ -70,6 +73,10 @@ fun HostsPage() {
         SerialRegistry.watch()
         onDispose { SerialRegistry.unwatch() }
     }
+
+    // Names the network before a card is drawn, so the badge on a system that
+    // lives on this one is already lit rather than lighting up a moment later.
+    LaunchedEffect(Unit) { NetworkWatcher.refresh() }
 
     val buckets = VaultStore.hostsByGroup()
     val serialDevices = SerialRegistry.entries
@@ -207,6 +214,10 @@ private fun HostRow(host: Host, onSftp: () -> Unit) {
     } else {
         "${identity.username}@${host.endpoint}"
     }
+    // The network in front of us when this system has been reached on it,
+    // otherwise the last one it answered on.
+    val network = host.networks.firstOrNull { it == NetworkWatcher.current?.key }
+        ?: host.networks.firstOrNull()
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         QIconBadgeSvg(
@@ -228,7 +239,7 @@ private fun HostRow(host: Host, onSftp: () -> Unit) {
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                subtitle,
+                withNetwork(subtitle, network),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 14.4.sp),
