@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ohmyssh.ai.AppTools
 import com.example.ohmyssh.components.nameNetwork
 import com.example.ohmyssh.components.networkIcon
 import com.example.ohmyssh.components.networkLabel
@@ -75,6 +77,7 @@ import com.example.ohmyssh.widgets.DropdownOption
 import com.example.ohmyssh.widgets.EditorScaffold
 import com.example.ohmyssh.widgets.EditorSection
 import com.example.ohmyssh.widgets.FieldGap
+import com.example.ohmyssh.widgets.FieldGroupTitle
 import com.example.ohmyssh.widgets.FieldRow
 import com.example.ohmyssh.widgets.QSecretText
 import com.example.ohmyssh.widgets.QTextField
@@ -216,8 +219,8 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
             Icons.Outlined.SmartToy,
             summary = when {
                 !agentEnabled -> "No access"
-                agentMayAuthenticate -> "Access, may request the password"
-                else -> "Access"
+                agentMayAuthenticate -> "${AppTools.specs.size} tools, may request the password"
+                else -> "${AppTools.specs.size - 1} tools"
             },
         ),
         EditorSection(
@@ -260,7 +263,7 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
                 scope.launch {
                     val confirmed = confirmDestructive(
                         title = "Delete system?",
-                        message = "${host!!.displayLabel} will be removed from the vault.",
+                        message = "${host.displayLabel} will be removed from the vault.",
                     )
                     if (confirmed) {
                         VaultStore.deleteHost(host.id)
@@ -416,6 +419,8 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
                     enabled = agentEnabled,
                     onChange = { agentMayAuthenticate = it },
                 )
+                FieldGroupTitle("Tools")
+                AgentToolList(enabled = agentEnabled, mayAuthenticate = agentMayAuthenticate)
             }
 
             HOST_KEY -> HostKeySection(
@@ -487,6 +492,38 @@ private fun SavedUserPicker(
                 Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Edit ${chosen.label}", fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AgentToolList(enabled: Boolean, mayAuthenticate: Boolean) {
+    val colors = appColors
+    Column(Modifier.fillMaxWidth().background(colors.card, RoundedCornerShape(10.dp))) {
+        AppTools.specs.forEachIndexed { index, spec ->
+            val available = enabled && (spec.name != "send_password" || mayAuthenticate)
+            if (index > 0) HorizontalDivider(color = colors.divider)
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        spec.name,
+                        modifier = Modifier.weight(1f),
+                        style = TextStyle(
+                            color = if (available) colors.textPrimary else colors.textMuted,
+                            fontSize = 12.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.W600,
+                        ),
+                    )
+                    if (!available) {
+                        Text("off", style = TextStyle(color = colors.textMuted, fontSize = 11.5.sp))
+                    }
+                }
+                Text(
+                    spec.description,
+                    style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 15.sp),
+                )
             }
         }
     }
