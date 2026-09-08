@@ -23,7 +23,6 @@ import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -168,7 +167,6 @@ fun SystemsBrowser(
                             items(hosts, key = { it.id }) { host ->
                                 HostCard(
                                     host = host,
-                                    mode = current,
                                     open = host.id in open,
                                     onOpen = { onOpenHost(host, current) },
                                 )
@@ -236,7 +234,7 @@ private fun GroupTitle(group: HostGroup?, count: Int) {
 }
 
 @Composable
-private fun HostCard(host: Host, mode: ConnectMode, open: Boolean, onOpen: () -> Unit) {
+private fun HostCard(host: Host, open: Boolean, onOpen: () -> Unit) {
     val colors = appColors
     val navigator = LocalNavigator.current
     val identity = VaultStore.identityFor(host)
@@ -263,17 +261,7 @@ private fun HostCard(host: Host, mode: ConnectMode, open: Boolean, onOpen: () ->
         } else {
             null
         },
-        trailing = {
-            if (mode == ConnectMode.SFTP) {
-                Icon(
-                    Icons.Outlined.FolderOpen,
-                    contentDescription = null,
-                    tint = colors.accent,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-            CardEditButton { navigator.push { HostEditorPage(host) } }
-        },
+        trailing = { CardEditButton { navigator.push { HostEditorPage(host) } } },
     )
 }
 
