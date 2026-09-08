@@ -29,7 +29,6 @@ import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.WbAuto
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -94,7 +93,6 @@ private const val ABOUT = "about"
 
 @Composable
 fun SettingsPage(onLocked: () -> Unit) {
-    val colors = appColors
     var selected by rememberSaveable { mutableStateOf(APPEARANCE) }
 
     var autoLogin by remember { mutableStateOf(false) }
@@ -123,27 +121,19 @@ fun SettingsPage(onLocked: () -> Unit) {
     )
 
     QScaffold {
-        Column(Modifier.fillMaxSize()) {
-            Text(
-                "Settings",
-                style = TextStyle(color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.W700),
-                modifier = Modifier.padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 10.dp),
-            )
-            HorizontalDivider(color = colors.divider)
-            SectionedLayout(sections, selected, onSelect = { selected = it }) { id ->
-                when (id) {
-                    APPEARANCE -> AppearanceSection()
-                    SECURITY -> SecuritySection(
-                        autoLogin = autoLogin,
-                        autoLoginAvailable = autoLoginAvailable,
-                        onAutoLogin = { autoLogin = it },
-                        onLocked = onLocked,
-                    )
-                    VAULT -> VaultSection(onLocked)
-                    HISTORY -> HistorySection()
-                    AGENT -> AgentSection()
-                    ABOUT -> AboutSection()
-                }
+        SectionedLayout(sections, selected, onSelect = { selected = it }) { id ->
+            when (id) {
+                APPEARANCE -> AppearanceSection()
+                SECURITY -> SecuritySection(
+                    autoLogin = autoLogin,
+                    autoLoginAvailable = autoLoginAvailable,
+                    onAutoLogin = { autoLogin = it },
+                    onLocked = onLocked,
+                )
+                VAULT -> VaultSection(onLocked)
+                HISTORY -> HistorySection()
+                AGENT -> AgentSection()
+                ABOUT -> AboutSection()
             }
         }
     }

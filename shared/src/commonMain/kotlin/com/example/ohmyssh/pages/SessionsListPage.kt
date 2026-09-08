@@ -51,7 +51,7 @@ import com.example.ohmyssh.components.ItemCard
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QIconBadgeSvg
 import com.example.ohmyssh.components.QScaffold
-import com.example.ohmyssh.components.SearchField
+import com.example.ohmyssh.components.BrowseHeader
 import com.example.ohmyssh.components.gridSection
 import com.example.ohmyssh.components.withNetwork
 import com.example.ohmyssh.data.ConnectionKind
@@ -181,44 +181,41 @@ private fun ListPane(
     selectedKey: String?,
     onOpen: (SessionEntry) -> Unit,
 ) {
-    val colors = appColors
     val scope = rememberCoroutineScope()
 
     Column(modifier.fillMaxHeight()) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, top = 12.dp, end = 10.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "Sessions",
-                modifier = Modifier.weight(1f),
-                style = TextStyle(color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.W700),
-            )
-            if (SessionManager.sessions.isNotEmpty()) {
-                HeaderAction(label = "Close all", icon = Icons.Filled.LinkOff, wide = false, onClick = {
-                    scope.launch {
-                        val confirmed = confirmDestructive(
-                            title = "Close all sessions?",
-                            message = "Every open connection will be dropped.",
-                            actionLabel = "Close all",
-                        )
-                        if (confirmed) SessionManager.closeAll()
-                    }
-                })
-            }
-            if (HistoryStore.past.isNotEmpty()) {
-                HeaderAction(label = "Clear history", icon = Icons.Outlined.DeleteSweep, wide = false, onClick = {
-                    scope.launch {
-                        val confirmed = confirmDestructive(
-                            title = "Clear connection history?",
-                            message = "Every past connection and the commands recorded over it will be forgotten.",
-                            actionLabel = "Clear",
-                        )
-                        if (confirmed) HistoryStore.clearAll()
-                    }
-                })
-            }
-        }
+        BrowseHeader(
+            title = null,
+            wide = false,
+            query = query,
+            onQueryChange = onQueryChange,
+            actions = {
+                if (SessionManager.sessions.isNotEmpty()) {
+                    HeaderAction(label = "Close all", icon = Icons.Filled.LinkOff, wide = false, onClick = {
+                        scope.launch {
+                            val confirmed = confirmDestructive(
+                                title = "Close all sessions?",
+                                message = "Every open connection will be dropped.",
+                                actionLabel = "Close all",
+                            )
+                            if (confirmed) SessionManager.closeAll()
+                        }
+                    })
+                }
+                if (HistoryStore.past.isNotEmpty()) {
+                    HeaderAction(label = "Clear history", icon = Icons.Outlined.DeleteSweep, wide = false, onClick = {
+                        scope.launch {
+                            val confirmed = confirmDestructive(
+                                title = "Clear connection history?",
+                                message = "Every past connection and the commands recorded over it will be forgotten.",
+                                actionLabel = "Clear",
+                            )
+                            if (confirmed) HistoryStore.clearAll()
+                        }
+                    })
+                }
+            },
+        )
 
         if (empty) {
             QEmptyView(
@@ -228,8 +225,6 @@ private fun ListPane(
             )
             return@Column
         }
-
-        SearchField(query, onQueryChange, Modifier.fillMaxWidth().padding(horizontal = 14.dp))
 
         if (open.isEmpty() && past.isEmpty() && agent.isEmpty()) {
             QEmptyView(
