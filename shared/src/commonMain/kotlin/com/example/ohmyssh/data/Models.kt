@@ -93,6 +93,40 @@ data class HostGroup(val id: String, val name: String) {
     }
 }
 
+/**
+ * How a system is browsed over SFTP. Absent from the vault while every field is
+ * at its default, so older vault files and the Flutter app read unchanged.
+ */
+data class SftpSettings(
+    val enabled: Boolean = true,
+    val startPath: String? = null,
+    val showHidden: Boolean = true,
+    val identityId: String? = null,
+    val inlineIdentity: Identity? = null,
+) {
+    val hasOwnLogin: Boolean get() = identityId != null || inlineIdentity != null
+
+    fun toJson(): JsonObject = buildJsonObject {
+        if (!enabled) put("enabled", false)
+        startPath?.let { put("startPath", it) }
+        if (!showHidden) put("showHidden", false)
+        identityId?.let { put("identityId", it) }
+        inlineIdentity?.let { put("inlineIdentity", it.toJson()) }
+    }
+
+    companion object {
+        val default = SftpSettings()
+
+        fun fromJson(json: JsonObject): SftpSettings = SftpSettings(
+            enabled = json.bool("enabled") ?: true,
+            startPath = json.str("startPath")?.takeIf { it.isNotBlank() },
+            showHidden = json.bool("showHidden") ?: true,
+            identityId = json.str("identityId"),
+            inlineIdentity = json.obj("inlineIdentity")?.let(Identity::fromJson),
+        )
+    }
+}
+
 data class Host(
     val id: String,
     val label: String,
@@ -128,6 +162,7 @@ data class Host(
      * password and never sees it echoed; it only asks for it to be sent.
      */
     val agentMayAuthenticate: Boolean = false,
+    val sftp: SftpSettings = SftpSettings.default,
 ) {
     val hasInlineIdentity: Boolean get() = inlineIdentity != null
 
@@ -150,6 +185,7 @@ data class Host(
         if (networks.isNotEmpty()) put("networks", JsonArray(networks.map(::JsonPrimitive)))
         if (agentEnabled) put("agentEnabled", true)
         if (agentMayAuthenticate) put("agentMayAuthenticate", true)
+        if (sftp != SftpSettings.default) put("sftp", sftp.toJson())
     }
 
     companion object {
@@ -170,6 +206,7 @@ data class Host(
                 ?: emptyList(),
             agentEnabled = json.bool("agentEnabled") ?: false,
             agentMayAuthenticate = json.bool("agentMayAuthenticate") ?: false,
+            sftp = json.obj("sftp")?.let(SftpSettings::fromJson) ?: SftpSettings.default,
         )
     }
 }

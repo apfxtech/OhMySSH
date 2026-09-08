@@ -28,7 +28,12 @@ class FileBrowserError(override val message: String) : Exception(message) {
 class FileBrowserState(
     val source: FileSource,
     val scope: CoroutineScope,
+    private val startPath: String? = null,
+    showHidden: Boolean = true,
 ) {
+    var showHidden: Boolean by mutableStateOf(showHidden)
+        private set
+
     var path: String by mutableStateOf("")
         private set
 
@@ -65,6 +70,8 @@ class FileBrowserState(
         if (started) return
         started = true
         try {
+            val start = startPath?.takeIf { it.isNotBlank() }
+            if (start != null && opened(start)) return
             listDir(source.home())
         } catch (failure: Exception) {
             Log.error("files", "could not open ${source.label}: $failure", failure)
@@ -73,13 +80,27 @@ class FileBrowserState(
         }
     }
 
+    private suspend fun opened(start: String): Boolean {
+        listDir(start)
+        if (error == null) return true
+        Log.warn("files", "start folder $start on ${source.label} failed, opening home")
+        return false
+    }
+
+    suspend fun toggleHidden() {
+        showHidden = !showHidden
+        refresh()
+    }
+
     suspend fun listDir(target: String) {
         loading = true
         error = null
         selected.clear()
         selectionMode = false
         try {
-            val listed = source.list(target).filter { it.name != "." && it.name != ".." }
+            val listed = source.list(target)
+                .filter { it.name != "." && it.name != ".." }
+                .filter { showHidden || !it.name.startsWith(".") }
             folders = listed.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
             files = listed.filterNot { it.isDirectory }.sortedBy { it.name.lowercase() }
             path = target
@@ -190,8 +211,18 @@ class FileBrowserState(
 object FileBrowsers {
     private val states = mutableMapOf<String, FileBrowserState>()
 
-    fun of(key: String, source: () -> FileSource): FileBrowserState = states.getOrPut(key) {
-        FileBrowserState(source(), CoroutineScope(SupervisorJob() + Dispatchers.Default))
+    fun of(
+        key: String,
+        startPath: String? = null,
+        showHidden: Boolean = true,
+        source: () -> FileSource,
+    ): FileBrowserState = states.getOrPut(key) {
+        FileBrowserState(
+            source(),
+            CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            startPath = startPath,
+            showHidden = showHidden,
+        )
     }
 
     fun byKey(key: String): FileBrowserState? = states[key]

@@ -18,7 +18,6 @@ import com.example.ohmyssh.net.NetworkWatcher
 import com.example.ohmyssh.session.PaneRef
 import com.example.ohmyssh.session.SessionManager
 import com.example.ohmyssh.session.Workspace
-import com.example.ohmyssh.ssh.HostSession
 import com.example.ohmyssh.ui.AppToasts
 
 @Composable
@@ -37,13 +36,7 @@ fun HostsPage() {
             }
             return
         }
-        val session = if (files) {
-            SessionManager.sessions.filterIsInstance<HostSession>()
-                .firstOrNull { it.host.id == host.id && it.isConnected }
-                ?: SessionManager.open(host)
-        } else {
-            SessionManager.open(host)
-        }
+        val session = if (files) SessionManager.openFiles(host) else SessionManager.open(host)
         val ref = if (files) PaneRef.Files(session.id) else PaneRef.Shell(session.id)
         val group = Workspace.openGroup(ref)
         navigator.push { SessionPage(group.id) }

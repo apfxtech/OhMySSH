@@ -90,6 +90,13 @@ object VaultStore {
         return data.identities.firstOrNull { it.id == id }
     }
 
+    /** The login SFTP dials with: its own when one is set, otherwise the system's. */
+    fun sftpIdentityFor(host: Host): Identity? {
+        host.sftp.inlineIdentity?.let { return it }
+        host.sftp.identityId?.let { id -> identityById(id)?.let { return it } }
+        return identityFor(host)
+    }
+
     fun identityById(id: String?): Identity? =
         id?.let { wanted -> data.identities.firstOrNull { it.id == wanted } }
 
@@ -126,7 +133,12 @@ object VaultStore {
 
     suspend fun deleteIdentity(id: String) = mutate {
         data = data.copy(
-            hosts = data.hosts.map { if (it.identityId == id) it.copy(identityId = null) else it },
+            hosts = data.hosts.map { host ->
+                var next = host
+                if (next.identityId == id) next = next.copy(identityId = null)
+                if (next.sftp.identityId == id) next = next.copy(sftp = next.sftp.copy(identityId = null))
+                next
+            },
             identities = data.identities.filter { it.id != id },
         )
     }

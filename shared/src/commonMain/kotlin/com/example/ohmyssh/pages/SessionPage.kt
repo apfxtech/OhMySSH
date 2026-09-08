@@ -341,7 +341,11 @@ private fun WindowBody(window: PaneWindow) {
     if (ref is PaneRef.Files) {
         if (session is HostSession && session.isConnected) {
             FileBrowserView(
-                browser = FileBrowsers.of(window.id) { SftpSource(session) },
+                browser = FileBrowsers.of(
+                    window.id,
+                    startPath = session.host.sftp.startPath,
+                    showHidden = session.host.sftp.showHidden,
+                ) { SftpSource(session) },
                 windowId = window.id,
             )
         } else {
@@ -388,13 +392,7 @@ private fun PickerBody(window: PaneWindow) {
             }
             return
         }
-        val session = if (files) {
-            SessionManager.sessions.filterIsInstance<HostSession>()
-                .firstOrNull { it.host.id == host.id && it.isConnected }
-                ?: SessionManager.open(host)
-        } else {
-            SessionManager.open(host)
-        }
+        val session = if (files) SessionManager.openFiles(host) else SessionManager.open(host)
 
         if (!files) {
             Workspace.resolve(window.id, PaneRef.Shell(session.id))

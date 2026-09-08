@@ -95,7 +95,9 @@ fun SystemsBrowser(
     val current = if (!serialSupported && mode == ConnectMode.SERIAL) ConnectMode.SSH else mode
     val needle = query.trim().lowercase()
     val buckets = VaultStore.hostsByGroup()
-        .mapValues { (group, hosts) -> hosts.filter { matches(it, group, needle) } }
+        .mapValues { (group, hosts) ->
+            hosts.filter { (current != ConnectMode.SFTP || it.sftp.enabled) && matches(it, group, needle) }
+        }
         .filterValues { it.isNotEmpty() }
     val serialDevices = SerialRegistry.entries.filter { matches(it, needle) }
     val open = SessionManager.sessions
@@ -153,6 +155,13 @@ fun SystemsBrowser(
                                     ),
                                 ) { Text("Add system") }
                             },
+                        )
+                    }
+                    buckets.isEmpty() && needle.isEmpty() -> Centered {
+                        QEmptyView(
+                            icon = Icons.Outlined.FolderOpen,
+                            title = "No systems with SFTP",
+                            message = "SFTP is switched off on every system.",
                         )
                     }
                     buckets.isEmpty() -> NothingMatches(query)

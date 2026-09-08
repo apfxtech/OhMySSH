@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lan
 import androidx.compose.material.icons.outlined.SmartToy
@@ -72,6 +73,7 @@ import com.example.ohmyssh.data.AuthKind
 import com.example.ohmyssh.data.Host
 import com.example.ohmyssh.data.HostGroup
 import com.example.ohmyssh.data.Identity
+import com.example.ohmyssh.data.SftpSettings
 import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.data.newId
 import com.example.ohmyssh.navigation.LocalNavigator
@@ -99,11 +101,14 @@ import kotlinx.coroutines.launch
 
 private const val CONNECTION = "connection"
 private const val AUTH = "auth"
+private const val SFTP = "sftp"
 private const val NETWORKS = "networks"
 private const val AGENT = "agent"
 private const val HOST_KEY = "hostKey"
 
 private enum class UserSource { SAVED, INLINE }
+
+private enum class SftpLogin { SAME, SAVED, INLINE }
 
 @Composable
 fun HostEditorPage(host: Host?, draft: Host? = null) {
@@ -145,6 +150,22 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
     }
     val credentials = rememberCredentialsState(host?.inlineIdentity)
 
+    val sftpInlineId = remember(host?.id) { host?.sftp?.inlineIdentity?.id ?: newId() }
+    var sftpEnabled by rememberSaveable(host?.id) { mutableStateOf(initial?.sftp?.enabled ?: true) }
+    var sftpStartPath by rememberSaveable(host?.id) { mutableStateOf(initial?.sftp?.startPath ?: "") }
+    var sftpShowHidden by rememberSaveable(host?.id) { mutableStateOf(initial?.sftp?.showHidden ?: true) }
+    var sftpIdentityId by rememberSaveable(host?.id) { mutableStateOf(host?.sftp?.identityId) }
+    var sftpLogin by rememberSaveable(host?.id) {
+        mutableStateOf(
+            when {
+                host?.sftp?.inlineIdentity != null -> SftpLogin.INLINE
+                host?.sftp?.identityId != null -> SftpLogin.SAVED
+                else -> SftpLogin.SAME
+            },
+        )
+    }
+    val sftpCredentials = rememberCredentialsState(host?.sftp?.inlineIdentity)
+
     LaunchedEffect(Unit) { NetworkWatcher.refresh() }
 
     val parsedPort = port.trim().toIntOrNull()
@@ -169,6 +190,17 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
         networks = networks.toList(),
         agentEnabled = agentEnabled,
         agentMayAuthenticate = agentEnabled && agentMayAuthenticate,
+        sftp = SftpSettings(
+            enabled = sftpEnabled,
+            startPath = sftpStartPath.trim().ifEmpty { null },
+            showHidden = sftpShowHidden,
+            identityId = if (sftpLogin == SftpLogin.SAVED) sftpIdentityId else null,
+            inlineIdentity = if (sftpLogin == SftpLogin.INLINE && !sftpCredentials.isEmpty) {
+                sftpCredentials.build(id = sftpInlineId)
+            } else {
+                null
+            },
+        ),
     )
 
     val original = remember(host?.id) { initial ?: Host(id = id, label = "", hostname = "") }
@@ -186,7 +218,29 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
             source == UserSource.INLINE && !credentials.isEmpty -> credentials.validate()
             else -> null
         }
+        SFTP -> when {
+            !sftpEnabled -> null
+            sftpLogin == SftpLogin.SAVED && sftpIdentityId != null &&
+                VaultStore.identityById(sftpIdentityId) == null -> "That user no longer exists"
+            sftpLogin == SftpLogin.INLINE && !sftpCredentials.isEmpty -> sftpCredentials.validate()
+            else -> null
+        }
         else -> null
+    }
+
+    val sftpSummary = when {
+        !sftpEnabled -> "Off"
+        else -> buildString {
+            append(sftpStartPath.trim().ifEmpty { "Home" })
+            append(" · ")
+            append(
+                when (sftpLogin) {
+                    SftpLogin.SAME -> "same login"
+                    SftpLogin.SAVED -> VaultStore.identityById(sftpIdentityId)?.username ?: "no user"
+                    SftpLogin.INLINE -> sftpCredentials.username.trim().ifEmpty { "no login" }
+                },
+            )
+        }
     }
 
     val endpoint = if (parsedPort == null || parsedPort == 22) hostname.trim() else "${hostname.trim()}:$parsedPort"
@@ -211,6 +265,7 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
             problem = problemIn(CONNECTION),
         ),
         EditorSection(AUTH, "Authentication", Icons.Outlined.Key, authSummary, problemIn(AUTH)),
+        EditorSection(SFTP, "SFTP", Icons.Outlined.FolderOpen, sftpSummary, problemIn(SFTP)),
         EditorSection(
             NETWORKS,
             "Networks",
@@ -395,6 +450,57 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
                         Icon(Icons.Outlined.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Also save to Users", fontSize = 13.sp)
+                    }
+                }
+            }
+
+            SFTP -> {
+                SwitchSetting(
+                    title = "Browse over SFTP",
+                    description = "Listed under SFTP on the systems page",
+                    checked = sftpEnabled,
+                    onChange = { sftpEnabled = it },
+                )
+                if (sftpEnabled) {
+                    SwitchSetting(
+                        title = "Show hidden files",
+                        description = "Names that start with a dot",
+                        checked = sftpShowHidden,
+                        onChange = { sftpShowHidden = it },
+                    )
+                    FieldGap()
+                    QTextField(
+                        value = sftpStartPath,
+                        onValueChange = { sftpStartPath = it },
+                        label = "Start folder",
+                        hint = "Home directory",
+                    )
+                    FieldGroupTitle("Login")
+                    SegmentedChoice(
+                        options = listOf(
+                            SegmentOption(SftpLogin.SAME, "Same as system"),
+                            SegmentOption(SftpLogin.SAVED, "Saved user"),
+                            SegmentOption(SftpLogin.INLINE, "Own login"),
+                        ),
+                        selected = sftpLogin,
+                        onSelect = { sftpLogin = it },
+                    )
+                    if (sftpLogin != SftpLogin.SAME) FieldGap()
+                    when (sftpLogin) {
+                        SftpLogin.SAME -> Unit
+                        SftpLogin.SAVED -> SavedUserPicker(
+                            identityId = sftpIdentityId,
+                            onPick = { sftpIdentityId = it },
+                            onCreate = {
+                                scope.launch {
+                                    val created = navigator.pushForResult<Identity> {
+                                        IdentityEditorPage(null)
+                                    }
+                                    if (created != null) sftpIdentityId = created.id
+                                }
+                            },
+                        )
+                        SftpLogin.INLINE -> CredentialsEditor(sftpCredentials)
                     }
                 }
             }

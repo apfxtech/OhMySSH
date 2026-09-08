@@ -9,6 +9,7 @@ import com.example.ohmyssh.data.ConnectionOutcome
 import com.example.ohmyssh.data.ConnectionRecord
 import com.example.ohmyssh.data.HistoryStore
 import com.example.ohmyssh.data.Host
+import com.example.ohmyssh.data.Identity
 import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.net.NetworkWatcher
 import com.example.ohmyssh.serial.SerialDeviceEntry
@@ -59,8 +60,12 @@ object SessionManager {
     fun liveFor(host: Host): HostSession? =
         sessions.filterIsInstance<HostSession>().firstOrNull { it.host.id == host.id }
 
-    fun open(host: Host, agentOwned: Boolean = false): HostSession {
-        val session = HostSession(host = host, identity = VaultStore.identityFor(host))
+    fun open(
+        host: Host,
+        agentOwned: Boolean = false,
+        identity: Identity? = VaultStore.identityFor(host),
+    ): HostSession {
+        val session = HostSession(host = host, identity = identity)
         // Set before the record is begun: history files an agent's sessions
         // apart, and a flag arriving after would file this one as the person's.
         session.agentOwned = agentOwned
@@ -80,6 +85,18 @@ object SessionManager {
 
         Log.info("sessions", "opening ${host.endpoint}")
         return adopt(session, record)
+    }
+
+    /**
+     * A session to browse [host] over. Reuses one already connected with the
+     * same login; a system whose SFTP login differs from its shell login gets a
+     * session of its own, since the other one cannot see its files.
+     */
+    fun openFiles(host: Host): HostSession {
+        val identity = VaultStore.sftpIdentityFor(host)
+        return sessions.filterIsInstance<HostSession>()
+            .firstOrNull { it.host.id == host.id && it.isConnected && it.identity?.id == identity?.id }
+            ?: open(host, identity = identity)
     }
 
     fun openSerial(entry: SerialDeviceEntry): SerialSession {

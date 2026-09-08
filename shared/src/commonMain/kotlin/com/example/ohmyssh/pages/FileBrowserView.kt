@@ -39,6 +39,8 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
@@ -404,6 +406,13 @@ fun FileBrowserView(browser: FileBrowserState, windowId: String) {
                         }
                     }
                 }
+                Spacer(Modifier.height(10.dp))
+                FloatingAction(
+                    icon = if (browser.showHidden) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                    background = colors.card,
+                    foreground = colors.textSecondary,
+                    enabled = !browser.loading,
+                ) { scope.launch { browser.toggleHidden() } }
                 Spacer(Modifier.height(10.dp))
                 FloatingAction(
                     icon = Icons.Filled.Refresh,
