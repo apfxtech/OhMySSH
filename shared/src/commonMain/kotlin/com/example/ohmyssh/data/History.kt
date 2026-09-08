@@ -129,6 +129,13 @@ class ConnectionRecord(
     var networkLabel: String? by mutableStateOf(null)
         internal set
 
+    /**
+     * Kept for good: out of the recent list, exempt from the caps, and left
+     * alone when the history is cleared.
+     */
+    var archived: Boolean by mutableStateOf(false)
+        internal set
+
     val commands = mutableStateListOf<LoggedCommand>()
 
     var droppedCommands: Int by mutableStateOf(0)
@@ -143,7 +150,7 @@ class ConnectionRecord(
      * attempt is kept: its error is the whole of its content.
      */
     val worthKeeping: Boolean
-        get() = commands.isNotEmpty() || outcome == ConnectionOutcome.FAILED
+        get() = archived || commands.isNotEmpty() || outcome == ConnectionOutcome.FAILED
 
     val isConnected: Boolean get() = outcome == ConnectionOutcome.OPEN
 
@@ -170,6 +177,7 @@ class ConnectionRecord(
         endedAt?.let { put("endedAt", it) }
         networkId?.let { put("networkId", it) }
         networkLabel?.let { put("networkLabel", it) }
+        if (archived) put("archived", true)
         put("outcome", outcome.wireName)
         error?.let { put("error", it) }
         if (droppedCommands > 0) put("dropped", droppedCommands)
@@ -193,6 +201,7 @@ class ConnectionRecord(
             record.endedAt = json.long("endedAt")
             record.networkId = json.str("networkId")
             record.networkLabel = json.str("networkLabel")
+            record.archived = json.bool("archived") ?: false
             // A session that was live when the app went away never got its
             // ending written. It is not open now, whatever the file says.
             record.outcome = ConnectionOutcome.parse(json.str("outcome"))

@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -285,6 +287,11 @@ private fun DetailActions(record: ConnectionRecord?, session: TerminalSession?, 
                 }
             }
         } else if (record != null) {
+            SmallButton(
+                if (record.archived) "Unarchive" else "Archive",
+                if (record.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive,
+                ButtonTone.NEUTRAL,
+            ) { HistoryStore.archive(listOf(record), archived = !record.archived) }
             SmallButton("Forget", Icons.Outlined.DeleteOutline, ButtonTone.DANGER) {
                 scope.launch {
                     val confirmed = confirmDestructive(

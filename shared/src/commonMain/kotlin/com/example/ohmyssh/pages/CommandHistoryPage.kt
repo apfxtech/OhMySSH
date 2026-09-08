@@ -4,6 +4,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -57,6 +59,13 @@ fun CommandHistoryPage(recordId: String) {
                     else -> null
                 },
                 actions = {
+                    if (!record.isLive) {
+                        QPageAppBarAction(
+                            tooltip = if (record.archived) "Unarchive" else "Archive",
+                            icon = if (record.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive,
+                            onPressed = { HistoryStore.archive(listOf(record), archived = !record.archived) },
+                        )
+                    }
                     if (commands.isNotEmpty()) {
                         QPageAppBarAction(
                             tooltip = "Copy every command",

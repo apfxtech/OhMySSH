@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,12 +20,21 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -33,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -40,18 +51,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ohmyssh.components.BrowseHeader
 import com.example.ohmyssh.components.GridSectionTitle
 import com.example.ohmyssh.components.HeaderAction
 import com.example.ohmyssh.components.ItemCard
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QIconBadgeSvg
 import com.example.ohmyssh.components.QScaffold
-import com.example.ohmyssh.components.BrowseHeader
 import com.example.ohmyssh.components.gridSection
 import com.example.ohmyssh.components.withNetwork
 import com.example.ohmyssh.data.ConnectionKind
@@ -71,13 +83,21 @@ import com.example.ohmyssh.ssh.HostSession
 import com.example.ohmyssh.ssh.osColorValue
 import com.example.ohmyssh.ssh.osIconAsset
 import com.example.ohmyssh.theme.appColors
+import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.ui.WindowWidth
 import com.example.ohmyssh.ui.windowWidthFor
 import com.example.ohmyssh.widgets.QEmptyView
+import com.example.ohmyssh.widgets.SegmentOption
+import com.example.ohmyssh.widgets.SegmentedChoice
 import com.example.ohmyssh.widgets.confirmDestructive
 import kotlinx.coroutines.launch
 
 private val kListPaneWidth = 360.dp
+
+enum class SessionsSource(val label: String, val icon: ImageVector) {
+    RECENT("Recent", Icons.Outlined.History),
+    ARCHIVE("Archive", Icons.Outlined.Inventory2),
+}
 
 private sealed class SessionEntry(val key: String) {
     class Live(val session: TerminalSession, val record: ConnectionRecord?) : SessionEntry("s:${session.id}")
@@ -94,33 +114,68 @@ private sealed class SessionEntry(val key: String) {
     }
 }
 
+private class Section(val title: String, val entries: List<SessionEntry>)
+
 /**
  * Open sessions and the history behind them as a list beside a detail pane on
- * a wide window, and a list that opens each item on a narrow one.
+ * a wide window, and a list that opens each item on a narrow one. The archive
+ * is the same page over the records put aside for good.
  */
 @Composable
 fun SessionsListPage() {
     val navigator = LocalNavigator.current
+    var source by rememberSaveable { mutableStateOf(SessionsSource.RECENT) }
     var query by rememberSaveable { mutableStateOf("") }
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var picking by rememberSaveable { mutableStateOf(false) }
+    var picked by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(Unit) { NetworkWatcher.refresh() }
+    LaunchedEffect(source) {
+        picking = false
+        picked = emptySet()
+    }
 
     val needle = query.trim().lowercase()
-    val open = SessionManager.sessions.map { SessionEntry.Live(it, HistoryStore.forSession(it.id)) }
-        .filter { it.matches(needle) }
-    val past = HistoryStore.clientPast.map { SessionEntry.Past(it) }.filter { it.matches(needle) }
-    val agent = HistoryStore.agentPast.map { SessionEntry.Past(it) }.filter { it.matches(needle) }
-    val nothingAtAll = SessionManager.sessions.isEmpty() && HistoryStore.past.isEmpty()
+    fun past(records: List<ConnectionRecord>) =
+        records.map { SessionEntry.Past(it) }.filter { it.matches(needle) }
+
+    val sections = when (source) {
+        SessionsSource.RECENT -> listOf(
+            Section(
+                "Open",
+                SessionManager.sessions.map { SessionEntry.Live(it, HistoryStore.forSession(it.id)) }
+                    .filter { it.matches(needle) },
+            ),
+            Section("History", past(HistoryStore.clientPast)),
+            Section("Agent", past(HistoryStore.agentPast)),
+        )
+        SessionsSource.ARCHIVE -> listOf(
+            Section("Archived", past(HistoryStore.archived.filter { !it.agent })),
+            Section("Agent", past(HistoryStore.archived.filter { it.agent })),
+        )
+    }
+    val entries = sections.flatMap { it.entries }
+    val nothingAtAll = when (source) {
+        SessionsSource.RECENT -> SessionManager.sessions.isEmpty() && HistoryStore.past.isEmpty()
+        SessionsSource.ARCHIVE -> HistoryStore.archived.isEmpty()
+    }
+    val pickable = entries.filterIsInstance<SessionEntry.Past>().map { it.record }
 
     QScaffold {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val width = windowWidthFor(maxWidth)
             val twoPane = width == WindowWidth.EXPANDED
-            val entries = open + past + agent
             val current = if (twoPane) entries.firstOrNull { it.key == selectedKey } ?: entries.firstOrNull() else null
 
             fun openEntry(entry: SessionEntry) {
+                if (picking) {
+                    if (entry is SessionEntry.Past) {
+                        val id = entry.record.id
+                        picked = if (id in picked) picked - id else picked + id
+                    }
+                    return
+                }
                 if (twoPane) {
                     selectedKey = entry.key
                     return
@@ -135,18 +190,40 @@ fun SessionsListPage() {
             }
 
             Row(Modifier.fillMaxSize()) {
-                ListPane(
-                    modifier = if (twoPane) Modifier.width(kListPaneWidth) else Modifier.weight(1f),
-                    query = query,
-                    onQueryChange = { query = it },
-                    open = open,
-                    past = past,
-                    agent = agent,
-                    empty = nothingAtAll,
-                    grid = width == WindowWidth.MEDIUM,
-                    selectedKey = current?.key,
-                    onOpen = ::openEntry,
-                )
+                Column((if (twoPane) Modifier.width(kListPaneWidth) else Modifier.weight(1f)).fillMaxHeight()) {
+                    if (picking) {
+                        PickBar(
+                            source = source,
+                            picked = pickable.filter { it.id in picked },
+                            total = pickable.size,
+                            onSelectAll = { picked = pickable.mapTo(HashSet()) { it.id } },
+                            onDone = {
+                                picking = false
+                                picked = emptySet()
+                            },
+                        )
+                    } else {
+                        ListHeader(
+                            source = source,
+                            onSourceChange = { source = it },
+                            query = query,
+                            onQueryChange = { query = it },
+                            canPick = pickable.isNotEmpty(),
+                            onPick = { picking = true },
+                        )
+                    }
+                    ListBody(
+                        sections = sections,
+                        source = source,
+                        query = query,
+                        empty = nothingAtAll,
+                        grid = width == WindowWidth.MEDIUM,
+                        selectedKey = current?.key,
+                        picking = picking,
+                        picked = picked,
+                        onOpen = ::openEntry,
+                    )
+                }
                 if (twoPane) {
                     VerticalDivider(color = appColors.divider)
                     Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -169,82 +246,162 @@ fun SessionsListPage() {
 }
 
 @Composable
-private fun ListPane(
-    modifier: Modifier,
+private fun ListHeader(
+    source: SessionsSource,
+    onSourceChange: (SessionsSource) -> Unit,
     query: String,
     onQueryChange: (String) -> Unit,
-    open: List<SessionEntry.Live>,
-    past: List<SessionEntry.Past>,
-    agent: List<SessionEntry.Past>,
+    canPick: Boolean,
+    onPick: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    BrowseHeader(
+        title = null,
+        wide = false,
+        query = query,
+        onQueryChange = onQueryChange,
+        filter = {
+            SegmentedChoice(
+                options = SessionsSource.entries.map { SegmentOption(it, it.label, it.icon) },
+                selected = source,
+                onSelect = onSourceChange,
+            )
+        },
+        actions = {
+            if (canPick) {
+                HeaderAction(label = "Select", icon = Icons.Outlined.Checklist, wide = false, onClick = onPick)
+            }
+            if (source == SessionsSource.RECENT && SessionManager.sessions.isNotEmpty()) {
+                HeaderAction(label = "Close all", icon = Icons.Filled.LinkOff, wide = false, onClick = {
+                    scope.launch {
+                        val confirmed = confirmDestructive(
+                            title = "Close all sessions?",
+                            message = "Every open connection will be dropped.",
+                            actionLabel = "Close all",
+                        )
+                        if (confirmed) SessionManager.closeAll()
+                    }
+                })
+            }
+            if (source == SessionsSource.RECENT && HistoryStore.past.isNotEmpty()) {
+                HeaderAction(label = "Clear history", icon = Icons.Outlined.DeleteSweep, wide = false, onClick = {
+                    scope.launch {
+                        val confirmed = confirmDestructive(
+                            title = "Clear connection history?",
+                            message = "Every recent connection and the commands recorded over it will be " +
+                                "forgotten. The archive stays.",
+                            actionLabel = "Clear",
+                        )
+                        if (confirmed) HistoryStore.clearAll()
+                    }
+                })
+            }
+        },
+    )
+}
+
+@Composable
+private fun PickBar(
+    source: SessionsSource,
+    picked: List<ConnectionRecord>,
+    total: Int,
+    onSelectAll: () -> Unit,
+    onDone: () -> Unit,
+) {
+    val colors = appColors
+    val scope = rememberCoroutineScope()
+    val count = picked.size
+    val toArchive = source == SessionsSource.RECENT
+
+    Row(
+        Modifier.fillMaxWidth().padding(start = 14.dp, top = 10.dp, end = 8.dp, bottom = 6.dp).height(34.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            if (count == 0) "Select connections" else "$count of $total",
+            modifier = Modifier.weight(1f),
+            style = TextStyle(color = colors.textPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.W600),
+        )
+        if (count < total) {
+            HeaderAction(label = "Select all", icon = Icons.Outlined.SelectAll, wide = false, onClick = onSelectAll)
+        }
+        if (count > 0) {
+            HeaderAction(
+                label = if (toArchive) "Archive" else "Unarchive",
+                icon = if (toArchive) Icons.Outlined.Archive else Icons.Outlined.Unarchive,
+                wide = false,
+                onClick = {
+                    HistoryStore.archive(picked, archived = toArchive)
+                    AppToasts.show(
+                        if (toArchive) "$count archived" else "$count back in the recent list",
+                    )
+                    onDone()
+                },
+            )
+            HeaderAction(label = "Forget", icon = Icons.Outlined.DeleteOutline, wide = false, onClick = {
+                scope.launch {
+                    val confirmed = confirmDestructive(
+                        title = if (count == 1) "Forget this connection?" else "Forget $count connections?",
+                        message = "The commands recorded over them go too.",
+                        actionLabel = "Forget",
+                    )
+                    if (!confirmed) return@launch
+                    HistoryStore.delete(picked)
+                    onDone()
+                }
+            })
+        }
+        HeaderAction(label = "Done", icon = Icons.Filled.Close, wide = false, onClick = onDone)
+    }
+}
+
+@Composable
+private fun ListBody(
+    sections: List<Section>,
+    source: SessionsSource,
+    query: String,
     empty: Boolean,
     grid: Boolean,
     selectedKey: String?,
+    picking: Boolean,
+    picked: Set<String>,
     onOpen: (SessionEntry) -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-
-    Column(modifier.fillMaxHeight()) {
-        BrowseHeader(
-            title = null,
-            wide = false,
-            query = query,
-            onQueryChange = onQueryChange,
-            actions = {
-                if (SessionManager.sessions.isNotEmpty()) {
-                    HeaderAction(label = "Close all", icon = Icons.Filled.LinkOff, wide = false, onClick = {
-                        scope.launch {
-                            val confirmed = confirmDestructive(
-                                title = "Close all sessions?",
-                                message = "Every open connection will be dropped.",
-                                actionLabel = "Close all",
-                            )
-                            if (confirmed) SessionManager.closeAll()
-                        }
-                    })
-                }
-                if (HistoryStore.past.isNotEmpty()) {
-                    HeaderAction(label = "Clear history", icon = Icons.Outlined.DeleteSweep, wide = false, onClick = {
-                        scope.launch {
-                            val confirmed = confirmDestructive(
-                                title = "Clear connection history?",
-                                message = "Every past connection and the commands recorded over it will be forgotten.",
-                                actionLabel = "Clear",
-                            )
-                            if (confirmed) HistoryStore.clearAll()
-                        }
-                    })
-                }
-            },
-        )
-
-        if (empty) {
-            QEmptyView(
+    if (empty) {
+        when (source) {
+            SessionsSource.RECENT -> QEmptyView(
                 icon = Icons.Outlined.Terminal,
                 title = "Nothing open",
                 message = "Connect to a system to start a session.",
             )
-            return@Column
-        }
-
-        if (open.isEmpty() && past.isEmpty() && agent.isEmpty()) {
-            QEmptyView(
-                icon = Icons.Filled.Search,
-                title = "Nothing matches",
-                message = "No session matches “${query.trim()}”.",
+            SessionsSource.ARCHIVE -> QEmptyView(
+                icon = Icons.Outlined.Inventory2,
+                title = "Nothing archived",
+                message = "Archived connections stay for good and are never cleared.",
             )
-            return@Column
         }
+        return
+    }
 
-        LazyVerticalGrid(
-            columns = if (grid) GridCells.Adaptive(264.dp) else GridCells.Fixed(1),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(if (grid) 8.dp else 6.dp),
-        ) {
-            section("Open", open, selectedKey, onOpen)
-            section("History", past, selectedKey, onOpen)
-            section("Agent", agent, selectedKey, onOpen)
+    if (sections.all { it.entries.isEmpty() }) {
+        QEmptyView(
+            icon = Icons.Filled.Search,
+            title = "Nothing matches",
+            message = "No session matches “${query.trim()}”.",
+        )
+        return
+    }
+
+    LazyVerticalGrid(
+        columns = if (grid) GridCells.Adaptive(264.dp) else GridCells.Fixed(1),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(if (grid) 8.dp else 6.dp),
+    ) {
+        for (section in sections) {
+            section(section.title, section.entries, selectedKey, picking, picked, onOpen)
         }
     }
 }
@@ -253,14 +410,20 @@ private fun LazyGridScope.section(
     title: String,
     entries: List<SessionEntry>,
     selectedKey: String?,
+    picking: Boolean,
+    picked: Set<String>,
     onOpen: (SessionEntry) -> Unit,
 ) {
     if (entries.isEmpty()) return
     gridSection("title:$title") { GridSectionTitle(title, entries.size) }
     items(entries, key = { it.key }) { entry ->
         when (entry) {
-            is SessionEntry.Live -> LiveCard(entry, entry.key == selectedKey) { onOpen(entry) }
-            is SessionEntry.Past -> PastCard(entry.record, entry.key == selectedKey) { onOpen(entry) }
+            is SessionEntry.Live -> LiveCard(entry, !picking && entry.key == selectedKey) { onOpen(entry) }
+            is SessionEntry.Past -> PastCard(
+                record = entry.record,
+                selected = if (picking) entry.record.id in picked else entry.key == selectedKey,
+                pick = if (picking) entry.record.id in picked else null,
+            ) { onOpen(entry) }
         }
     }
 }
@@ -300,7 +463,7 @@ private fun LiveCard(entry: SessionEntry.Live, selected: Boolean, onOpen: () -> 
 }
 
 @Composable
-private fun PastCard(record: ConnectionRecord, selected: Boolean, onOpen: () -> Unit) {
+private fun PastCard(record: ConnectionRecord, selected: Boolean, pick: Boolean?, onOpen: () -> Unit) {
     val colors = appColors
     val failed = record.outcome == ConnectionOutcome.FAILED
     val detail = buildList {
@@ -318,6 +481,16 @@ private fun PastCard(record: ConnectionRecord, selected: Boolean, onOpen: () -> 
         detail = withNetwork(detail, record.networkId, record.networkLabel),
         leading = { Badge(record.kind == ConnectionKind.SERIAL, record.osId) },
         titleTrailing = if (failed) ({ Dot(colors.danger) }) else null,
+        trailing = pick?.let {
+            {
+                Icon(
+                    if (it) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
+                    contentDescription = if (it) "Selected" else "Not selected",
+                    tint = if (it) colors.accent else colors.textMuted,
+                    modifier = Modifier.padding(end = 6.dp).size(20.dp),
+                )
+            }
+        },
     )
 }
 

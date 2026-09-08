@@ -45,13 +45,17 @@ object HistoryStore {
     fun forSession(sessionId: String): ConnectionRecord? =
         connections.firstOrNull { it.liveSessionId == sessionId }
 
-    val past: List<ConnectionRecord> get() = connections.filter { !it.isLive }
+    /** Closed connections still in the recent list, the archive aside. */
+    val past: List<ConnectionRecord> get() = connections.filter { !it.isLive && !it.archived }
 
     /** Closed connections the person opened themselves. */
     val clientPast: List<ConnectionRecord> get() = past.filter { !it.agent }
 
     /** Closed connections an agent opened, kept and capped apart from the above. */
     val agentPast: List<ConnectionRecord> get() = past.filter { it.agent }
+
+    /** Connections put aside to keep, newest first. */
+    val archived: List<ConnectionRecord> get() = connections.filter { it.archived }
 
     fun open(vault: Vault) {
         this.vault = vault
@@ -182,8 +186,20 @@ object HistoryStore {
         requestSave()
     }
 
+    fun delete(records: Collection<ConnectionRecord>) {
+        connections.removeAll(records.toSet())
+        requestSave()
+    }
+
+    fun archive(records: Collection<ConnectionRecord>, archived: Boolean = true) {
+        for (record in records) record.archived = archived
+        trim()
+        requestSave()
+    }
+
+    /** Forgets the recent list. What is archived and what is still open stay. */
     fun clearAll() {
-        connections.removeAll { !it.isLive }
+        connections.removeAll { !it.isLive && !it.archived }
         requestSave()
     }
 
@@ -197,8 +213,8 @@ object HistoryStore {
     }
 
     private fun trim(agent: Boolean, keep: Int) {
-        while (connections.count { it.agent == agent } > keep) {
-            val oldest = connections.lastOrNull { it.agent == agent && !it.isLive } ?: return
+        while (connections.count { it.agent == agent && !it.archived } > keep) {
+            val oldest = connections.lastOrNull { it.agent == agent && !it.isLive && !it.archived } ?: return
             connections.remove(oldest)
         }
     }

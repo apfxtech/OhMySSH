@@ -324,6 +324,36 @@ class HistoryTest {
         assertEquals("a${kMaxAgentConnectionsKept + 9}", store.agentPast.first().label)
     }
 
+    @Test
+    fun anArchivedConnectionOutlivesTheCapAndTheClear() {
+        val store = freshStore()
+        closed(store, "keeper", agent = false)
+        val keeper = store.past.single()
+        store.archive(listOf(keeper))
+        repeat(kMaxClientConnectionsKept + 10) { closed(store, "c$it", agent = false) }
+
+        assertTrue(keeper in store.connections)
+        assertEquals(listOf(keeper), store.archived)
+        assertFalse(keeper in store.past)
+
+        store.clearAll()
+
+        assertEquals(listOf(keeper), store.connections.toList())
+        assertTrue(ConnectionRecord.fromJson(keeper.toJson()).archived)
+    }
+
+    @Test
+    fun unarchivingPutsAConnectionBackInTheRecentList() {
+        val store = freshStore()
+        closed(store, "keeper", agent = false)
+        val keeper = store.past.single()
+        store.archive(listOf(keeper))
+        store.archive(listOf(keeper), archived = false)
+
+        assertEquals(listOf(keeper), store.past)
+        assertEquals(emptyList(), store.archived)
+    }
+
     private fun closed(store: HistoryStore, label: String, agent: Boolean) {
         val record = store.begin(
             sessionId = label,
