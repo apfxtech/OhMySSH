@@ -1,45 +1,59 @@
 package com.example.ohmyssh.pages
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LinkOff
-import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ohmyssh.components.GroupedCardList
-import com.example.ohmyssh.components.withNetwork
+import com.example.ohmyssh.components.GridSectionTitle
+import com.example.ohmyssh.components.HeaderAction
+import com.example.ohmyssh.components.ItemCard
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QIconBadgeSvg
-import com.example.ohmyssh.components.QFloatingAction
 import com.example.ohmyssh.components.QScaffold
+import com.example.ohmyssh.components.SearchField
+import com.example.ohmyssh.components.gridSection
+import com.example.ohmyssh.components.withNetwork
 import com.example.ohmyssh.data.ConnectionKind
 import com.example.ohmyssh.data.ConnectionOutcome
 import com.example.ohmyssh.data.ConnectionRecord
@@ -51,265 +65,277 @@ import com.example.ohmyssh.serial.SerialSession
 import com.example.ohmyssh.serial.serialPortName
 import com.example.ohmyssh.session.PaneRef
 import com.example.ohmyssh.session.SessionManager
-import com.example.ohmyssh.session.Workspace
 import com.example.ohmyssh.session.TerminalSession
+import com.example.ohmyssh.session.Workspace
 import com.example.ohmyssh.ssh.HostSession
 import com.example.ohmyssh.ssh.osColorValue
 import com.example.ohmyssh.ssh.osIconAsset
-import com.example.ohmyssh.theme.QAppColors
 import com.example.ohmyssh.theme.appColors
+import com.example.ohmyssh.ui.WindowWidth
+import com.example.ohmyssh.ui.windowWidthFor
 import com.example.ohmyssh.widgets.QEmptyView
 import com.example.ohmyssh.widgets.confirmDestructive
 import kotlinx.coroutines.launch
 
+private val kListPaneWidth = 360.dp
+
+private sealed class SessionEntry(val key: String) {
+    class Live(val session: TerminalSession, val record: ConnectionRecord?) : SessionEntry("s:${session.id}")
+
+    class Past(val record: ConnectionRecord) : SessionEntry("r:${record.id}")
+
+    fun matches(needle: String): Boolean {
+        if (needle.isEmpty()) return true
+        val words = when (this) {
+            is Live -> listOf(session.title, session.subtitle, record?.target, record?.username)
+            is Past -> listOf(record.label, record.target, record.username)
+        }
+        return words.any { it?.lowercase()?.contains(needle) == true }
+    }
+}
+
+/**
+ * Open sessions and the history behind them as a list beside a detail pane on
+ * a wide window, and a list that opens each item on a narrow one.
+ */
 @Composable
 fun SessionsListPage() {
     val navigator = LocalNavigator.current
-    val scope = rememberCoroutineScope()
-    val sessions = SessionManager.sessions
-    val past = HistoryStore.clientPast
-    val agentPast = HistoryStore.agentPast
+    var query by rememberSaveable { mutableStateOf("") }
+    var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { NetworkWatcher.refresh() }
 
-    QScaffold(
-        floatingActions = {
-            if (sessions.isNotEmpty()) {
-                QFloatingAction(
-                    tooltip = "Close all",
-                    icon = Icons.Filled.LinkOff,
-                    onPressed = {
-                        scope.launch {
-                            val confirmed = confirmDestructive(
-                                title = "Close all sessions?",
-                                message = "Every open connection will be dropped.",
-                                actionLabel = "Close all",
-                            )
-                            if (confirmed) SessionManager.closeAll()
-                        }
-                    },
-                )
+    val needle = query.trim().lowercase()
+    val open = SessionManager.sessions.map { SessionEntry.Live(it, HistoryStore.forSession(it.id)) }
+        .filter { it.matches(needle) }
+    val past = HistoryStore.clientPast.map { SessionEntry.Past(it) }.filter { it.matches(needle) }
+    val agent = HistoryStore.agentPast.map { SessionEntry.Past(it) }.filter { it.matches(needle) }
+    val nothingAtAll = SessionManager.sessions.isEmpty() && HistoryStore.past.isEmpty()
+
+    QScaffold {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val width = windowWidthFor(maxWidth)
+            val twoPane = width == WindowWidth.EXPANDED
+            val entries = open + past + agent
+            val current = if (twoPane) entries.firstOrNull { it.key == selectedKey } ?: entries.firstOrNull() else null
+
+            fun openEntry(entry: SessionEntry) {
+                if (twoPane) {
+                    selectedKey = entry.key
+                    return
+                }
+                when (entry) {
+                    is SessionEntry.Live -> {
+                        val group = Workspace.reveal(PaneRef.Shell(entry.session.id))
+                        navigator.push { SessionPage(group.id) }
+                    }
+                    is SessionEntry.Past -> navigator.push { CommandHistoryPage(entry.record.id) }
+                }
             }
-        },
-    ) {
-        if (sessions.isEmpty() && past.isEmpty() && agentPast.isEmpty()) {
+
+            Row(Modifier.fillMaxSize()) {
+                ListPane(
+                    modifier = if (twoPane) Modifier.width(kListPaneWidth) else Modifier.weight(1f),
+                    query = query,
+                    onQueryChange = { query = it },
+                    open = open,
+                    past = past,
+                    agent = agent,
+                    empty = nothingAtAll,
+                    grid = width == WindowWidth.MEDIUM,
+                    selectedKey = current?.key,
+                    onOpen = ::openEntry,
+                )
+                if (twoPane) {
+                    VerticalDivider(color = appColors.divider)
+                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                        when (current) {
+                            null -> if (!nothingAtAll) {
+                                QEmptyView(
+                                    icon = Icons.Outlined.Terminal,
+                                    title = "Nothing selected",
+                                    message = "Pick a session to see what ran over it.",
+                                )
+                            }
+                            is SessionEntry.Live -> ConnectionDetail(current.record, current.session, header = true)
+                            is SessionEntry.Past -> ConnectionDetail(current.record, null, header = true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListPane(
+    modifier: Modifier,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    open: List<SessionEntry.Live>,
+    past: List<SessionEntry.Past>,
+    agent: List<SessionEntry.Past>,
+    empty: Boolean,
+    grid: Boolean,
+    selectedKey: String?,
+    onOpen: (SessionEntry) -> Unit,
+) {
+    val colors = appColors
+    val scope = rememberCoroutineScope()
+
+    Column(modifier.fillMaxHeight()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, top = 12.dp, end = 10.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Sessions",
+                modifier = Modifier.weight(1f),
+                style = TextStyle(color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.W700),
+            )
+            if (SessionManager.sessions.isNotEmpty()) {
+                HeaderAction(label = "Close all", icon = Icons.Filled.LinkOff, wide = false, onClick = {
+                    scope.launch {
+                        val confirmed = confirmDestructive(
+                            title = "Close all sessions?",
+                            message = "Every open connection will be dropped.",
+                            actionLabel = "Close all",
+                        )
+                        if (confirmed) SessionManager.closeAll()
+                    }
+                })
+            }
+            if (HistoryStore.past.isNotEmpty()) {
+                HeaderAction(label = "Clear history", icon = Icons.Outlined.DeleteSweep, wide = false, onClick = {
+                    scope.launch {
+                        val confirmed = confirmDestructive(
+                            title = "Clear connection history?",
+                            message = "Every past connection and the commands recorded over it will be forgotten.",
+                            actionLabel = "Clear",
+                        )
+                        if (confirmed) HistoryStore.clearAll()
+                    }
+                })
+            }
+        }
+
+        if (empty) {
             QEmptyView(
-                icon = Icons.Filled.Terminal,
+                icon = Icons.Outlined.Terminal,
                 title = "Nothing open",
                 message = "Connect to a system to start a session.",
             )
-            return@QScaffold
+            return@Column
         }
 
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(top = 14.dp, bottom = 20.dp),
+        SearchField(query, onQueryChange, Modifier.fillMaxWidth().padding(horizontal = 14.dp))
+
+        if (open.isEmpty() && past.isEmpty() && agent.isEmpty()) {
+            QEmptyView(
+                icon = Icons.Filled.Search,
+                title = "Nothing matches",
+                message = "No session matches “${query.trim()}”.",
+            )
+            return@Column
+        }
+
+        LazyVerticalGrid(
+            columns = if (grid) GridCells.Adaptive(264.dp) else GridCells.Fixed(1),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (grid) 8.dp else 6.dp),
         ) {
-            if (sessions.isNotEmpty()) {
-                GroupedCardList(
-                    title = if (past.isEmpty() && agentPast.isEmpty()) null else "Open",
-                    items = sessions.toList(),
-                    onTap = { session ->
-                        {
-                            val group = Workspace.reveal(PaneRef.Shell(session.id))
-                            navigator.push { SessionPage(group.id) }
-                        }
-                    },
-                    itemBuilder = { session -> SessionRow(session) },
-                )
-            }
+            section("Open", open, selectedKey, onOpen)
+            section("History", past, selectedKey, onOpen)
+            section("Agent", agent, selectedKey, onOpen)
+        }
+    }
+}
 
-            if (past.isNotEmpty()) {
-                if (sessions.isNotEmpty()) Spacer(Modifier.height(18.dp))
-                GroupedCardList(
-                    title = "History",
-                    items = past,
-                    onTap = { record ->
-                        { navigator.push { CommandHistoryPage(record.id) } }
-                    },
-                    itemBuilder = { record -> HistoryRow(record) },
-                )
-            }
-
-            if (agentPast.isNotEmpty()) {
-                if (sessions.isNotEmpty() || past.isNotEmpty()) Spacer(Modifier.height(18.dp))
-                GroupedCardList(
-                    title = "Agent history",
-                    items = agentPast,
-                    onTap = { record ->
-                        { navigator.push { CommandHistoryPage(record.id) } }
-                    },
-                    itemBuilder = { record -> HistoryRow(record) },
-                )
-            }
+private fun LazyGridScope.section(
+    title: String,
+    entries: List<SessionEntry>,
+    selectedKey: String?,
+    onOpen: (SessionEntry) -> Unit,
+) {
+    if (entries.isEmpty()) return
+    gridSection("title:$title") { GridSectionTitle(title, entries.size) }
+    items(entries, key = { it.key }) { entry ->
+        when (entry) {
+            is SessionEntry.Live -> LiveCard(entry, entry.key == selectedKey) { onOpen(entry) }
+            is SessionEntry.Past -> PastCard(entry.record, entry.key == selectedKey) { onOpen(entry) }
         }
     }
 }
 
 @Composable
-private fun SessionRow(session: TerminalSession) {
+private fun LiveCard(entry: SessionEntry.Live, selected: Boolean, onOpen: () -> Unit) {
     val colors = appColors
-    val navigator = LocalNavigator.current
     val scope = rememberCoroutineScope()
-    val record = HistoryStore.forSession(session.id)
-
-    val detail = when (session) {
-        is HostSession -> "${session.statusLabel} · ${session.host.endpoint}"
-        is SerialSession -> "${session.statusLabel} · " +
-            "${serialPortName(session.device.path)} · ${session.device.baudRate}"
-        else -> session.statusLabel
+    val session = entry.session
+    val record = entry.record
+    val target = when (session) {
+        is HostSession -> listOfNotNull(session.identity?.username?.let { "$it@" }, session.host.endpoint).joinToString("")
+        is SerialSession -> "${serialPortName(session.device.path)} · ${session.device.baudRate}"
+        else -> session.subtitle
     }
+    val detail = buildList {
+        add(session.statusLabel)
+        if (session.agentOwned) add("agent")
+        val count = record?.commands?.size ?: 0
+        if (count > 0) add(if (count == 1) "1 command" else "$count commands")
+    }.joinToString(" · ")
 
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        if (session is SerialSession) {
-            QIconBadge(icon = Icons.Filled.Usb, color = colors.info)
-        } else {
-            val osId = (session as? HostSession)?.let { it.profile?.osId ?: it.host.osId }
-            QIconBadgeSvg(asset = osIconAsset(osId), color = Color(osColorValue(osId)))
-        }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                session.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = TextStyle(
-                    color = colors.textPrimary,
-                    fontSize = 14.5.sp,
-                    lineHeight = 17.4.sp,
-                    fontWeight = FontWeight.W600,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(statusColor(colors, session)),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    withNetwork(detail, record?.networkId, record?.networkLabel),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(
-                        color = colors.textMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 14.4.sp,
-                    ),
-                )
+    ItemCard(
+        onClick = onOpen,
+        selected = selected,
+        title = session.title,
+        subtitle = AnnotatedString(target),
+        detail = withNetwork(detail, record?.networkId, record?.networkLabel),
+        leading = { Badge(session is SerialSession, (session as? HostSession)?.let { it.profile?.osId ?: it.host.osId }) },
+        titleTrailing = { Dot(statusColor(colors, session)) },
+        trailing = {
+            IconButton(onClick = { scope.launch { SessionManager.close(session.id) } }, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.textMuted, modifier = Modifier.size(15.dp))
             }
-        }
-        if (record != null) {
-            IconButton(onClick = { navigator.push { CommandHistoryPage(record.id) } }) {
-                CommandCountIcon(record.commands.size)
-            }
-        }
-        IconButton(onClick = { scope.launch { SessionManager.close(session.id) } }) {
-            Icon(
-                Icons.Filled.Close,
-                contentDescription = "Close",
-                tint = colors.textMuted,
-                modifier = Modifier.size(16.dp),
-            )
-        }
+        },
+    )
+}
+
+@Composable
+private fun PastCard(record: ConnectionRecord, selected: Boolean, onOpen: () -> Unit) {
+    val colors = appColors
+    val failed = record.outcome == ConnectionOutcome.FAILED
+    val detail = buildList {
+        add(formatRelative(record.startedAt))
+        if (failed) add("failed")
+        val count = record.commands.size
+        if (count > 0) add(if (count == 1) "1 command" else "$count commands")
+    }.joinToString(" · ")
+
+    ItemCard(
+        onClick = onOpen,
+        selected = selected,
+        title = record.label,
+        subtitle = AnnotatedString(listOfNotNull(record.username?.let { "$it@" }, record.target).joinToString("")),
+        detail = withNetwork(detail, record.networkId, record.networkLabel),
+        leading = { Badge(record.kind == ConnectionKind.SERIAL, record.osId) },
+        titleTrailing = if (failed) ({ Dot(colors.danger) }) else null,
+    )
+}
+
+@Composable
+private fun Badge(serial: Boolean, osId: String?) {
+    if (serial) {
+        QIconBadge(icon = Icons.Filled.Usb, color = appColors.info, size = 34.dp, iconSize = 19.dp)
+    } else {
+        QIconBadgeSvg(asset = osIconAsset(osId), color = Color(osColorValue(osId)), size = 34.dp, iconSize = 22.dp)
     }
 }
 
 @Composable
-private fun CommandCountIcon(count: Int) {
-    val colors = appColors
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            Icons.Filled.History,
-            contentDescription = "Commands",
-            tint = if (count > 0) colors.accent else colors.textMuted,
-            modifier = Modifier.size(16.dp),
-        )
-        if (count > 0) {
-            Spacer(Modifier.width(3.dp))
-            Text(
-                "$count",
-                style = TextStyle(
-                    color = colors.accent,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.W700,
-                ),
-            )
-        }
-    }
+private fun Dot(color: Color) {
+    Box(Modifier.size(6.dp).clip(CircleShape).background(color))
 }
-
-@Composable
-private fun HistoryRow(record: ConnectionRecord) {
-    val colors = appColors
-
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        if (record.kind == ConnectionKind.SERIAL) {
-            QIconBadge(icon = Icons.Filled.Usb, color = colors.info)
-        } else {
-            QIconBadgeSvg(
-                asset = osIconAsset(record.osId),
-                color = Color(osColorValue(record.osId)),
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                record.label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = TextStyle(
-                    color = colors.textPrimary,
-                    fontSize = 14.5.sp,
-                    lineHeight = 17.4.sp,
-                    fontWeight = FontWeight.W600,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(outcomeColor(colors, record.outcome)),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    withNetwork(
-                        connectionSubtitle(record),
-                        record.networkId,
-                        record.networkLabel,
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(
-                        color = colors.textMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 14.4.sp,
-                    ),
-                )
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        CommandCountIcon(record.commands.size)
-        Spacer(Modifier.width(8.dp))
-    }
-}
-
-private fun outcomeColor(colors: QAppColors, outcome: ConnectionOutcome): Color = when (outcome) {
-    ConnectionOutcome.FAILED -> colors.danger
-    ConnectionOutcome.OPEN -> colors.success
-    ConnectionOutcome.DISCONNECTED -> colors.textMuted
-}
-
-private fun connectionSubtitle(record: ConnectionRecord): String = buildList {
-    add(formatRelative(record.startedAt))
-    if (record.outcome == ConnectionOutcome.FAILED) add("failed")
-    add(record.target)
-    val count = record.commands.size
-    if (count > 0) add(if (count == 1) "1 command" else "$count commands")
-}.joinToString(" · ")

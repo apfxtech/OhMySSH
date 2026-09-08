@@ -11,6 +11,9 @@ object Log {
      */
     var sink: ((level: String, scope: String, message: String) -> Unit)? = null
 
+    /** Where the sink writes, for a settings page to point at. */
+    var location: String? = null
+
     fun info(scope: String, message: String) = write("INFO", scope, message)
 
     fun warn(scope: String, message: String) = write("WARN", scope, message)

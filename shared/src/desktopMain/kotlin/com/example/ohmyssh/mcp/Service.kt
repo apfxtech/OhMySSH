@@ -1,5 +1,6 @@
 package com.example.ohmyssh.mcp
 
+import com.example.ohmyssh.ai.AgentServer
 import com.example.ohmyssh.services.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ object McpService {
         }
 
         socket = listener
+        AgentServer.endpoint = "127.0.0.1:${listener.localPort}"
         Log.info("mcp", "listening on 127.0.0.1:${listener.localPort}")
 
         scope.launch {
@@ -63,6 +65,7 @@ object McpService {
     fun stop() {
         runCatching { socket?.close() }
         socket = null
+        AgentServer.endpoint = null
     }
 
     private suspend fun handle(client: Socket) {

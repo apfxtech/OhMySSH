@@ -81,6 +81,7 @@ import com.example.ohmyssh.net.NetworkWatcher
 import com.example.ohmyssh.net.networkKind
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
+import com.example.ohmyssh.widgets.AgentToolList
 import com.example.ohmyssh.widgets.CredentialsEditor
 import com.example.ohmyssh.widgets.DropdownAction
 import com.example.ohmyssh.widgets.DropdownField
@@ -92,6 +93,7 @@ import com.example.ohmyssh.widgets.FieldGroupTitle
 import com.example.ohmyssh.widgets.FieldRow
 import com.example.ohmyssh.widgets.QTextField
 import com.example.ohmyssh.widgets.SegmentOption
+import com.example.ohmyssh.widgets.SmallButton
 import com.example.ohmyssh.widgets.SegmentedChoice
 import com.example.ohmyssh.widgets.SwitchSetting
 import com.example.ohmyssh.widgets.confirmDestructive
@@ -612,38 +614,6 @@ private fun SavedUserPicker(
 }
 
 @Composable
-private fun AgentToolList(enabled: Boolean, mayAuthenticate: Boolean) {
-    val colors = appColors
-    Column(Modifier.fillMaxWidth().background(colors.card, RoundedCornerShape(10.dp))) {
-        AppTools.specs.forEachIndexed { index, spec ->
-            val available = enabled && (spec.name != "send_password" || mayAuthenticate)
-            if (index > 0) HorizontalDivider(color = colors.divider)
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        spec.name,
-                        modifier = Modifier.weight(1f),
-                        style = TextStyle(
-                            color = if (available) colors.textPrimary else colors.textMuted,
-                            fontSize = 12.5.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.W600,
-                        ),
-                    )
-                    if (!available) {
-                        Text("off", style = TextStyle(color = colors.textMuted, fontSize = 11.5.sp))
-                    }
-                }
-                Text(
-                    spec.description,
-                    style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 15.sp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun NetworksSection(
     networks: List<String>,
     onRename: (String) -> Unit,
@@ -778,29 +748,14 @@ private fun HostKeySection(fingerprint: String?, onForget: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            SmallOutlinedButton(
+            SmallButton(
                 label = if (revealed) "Hide" else "Show",
                 icon = if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
             ) { revealed = !revealed }
-            SmallOutlinedButton("Copy", Icons.Outlined.ContentCopy) {
+            SmallButton("Copy", Icons.Outlined.ContentCopy) {
                 clipboard.setText(AnnotatedString(fingerprint))
                 AppToasts.show("Host key copied")
             }
         }
-    }
-}
-
-@Composable
-private fun SmallOutlinedButton(label: String, icon: ImageVector, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp),
-        modifier = Modifier.height(30.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = appColors.accent),
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 12.5.sp)
     }
 }

@@ -1,5 +1,6 @@
 package com.example.ohmyssh.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -260,6 +261,7 @@ fun ItemCard(
     modifier: Modifier = Modifier,
     titleTrailing: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    selected: Boolean = false,
 ) {
     val colors = appColors
     Card(
@@ -267,6 +269,7 @@ fun ItemCard(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = colors.card),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = if (selected) BorderStroke(1.dp, colors.accent) else null,
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(

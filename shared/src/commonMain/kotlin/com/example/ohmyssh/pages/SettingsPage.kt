@@ -1,31 +1,35 @@
 package com.example.ohmyssh.pages
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Password
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.WbAuto
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,134 +37,223 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ohmyssh.components.GroupedCardList
+import com.example.ohmyssh.ai.AgentServer
+import com.example.ohmyssh.ai.AppTools
 import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.data.AutoLogin
 import com.example.ohmyssh.data.AutoLoginException
 import com.example.ohmyssh.data.HistoryStore
+import com.example.ohmyssh.data.Vault
 import com.example.ohmyssh.data.VaultStore
 import com.example.ohmyssh.data.WrongPasswordException
 import com.example.ohmyssh.navigation.LocalNavigator
+import com.example.ohmyssh.platform.AppFiles
 import com.example.ohmyssh.platform.FilePick
+import com.example.ohmyssh.platform.appPlatform
+import com.example.ohmyssh.platform.appVersion
+import com.example.ohmyssh.platform.displayName
+import com.example.ohmyssh.platform.isDesktop
+import com.example.ohmyssh.platform.releaseTag
 import com.example.ohmyssh.services.Log
 import com.example.ohmyssh.session.SessionManager
 import com.example.ohmyssh.theme.QAppThemeController
 import com.example.ohmyssh.theme.QThemeMode
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
-import com.example.ohmyssh.widgets.AppVersionLabel
+import com.example.ohmyssh.widgets.AgentToolList
+import com.example.ohmyssh.widgets.EditorSection
+import com.example.ohmyssh.widgets.InfoTable
+import com.example.ohmyssh.widgets.SectionedLayout
+import com.example.ohmyssh.widgets.SegmentOption
+import com.example.ohmyssh.widgets.SegmentedChoice
+import com.example.ohmyssh.widgets.SettingsDivider
+import com.example.ohmyssh.widgets.SettingsGroup
+import com.example.ohmyssh.widgets.SettingsLabel
+import com.example.ohmyssh.widgets.SettingsRow
+import com.example.ohmyssh.widgets.SettingsToggle
 import com.example.ohmyssh.widgets.confirmDestructive
 import com.example.ohmyssh.widgets.promptForPassword
 import kotlinx.coroutines.launch
 
-private class SettingsAction(
-    val icon: ImageVector,
-    val color: Color,
-    val title: String,
-    val subtitle: String,
-    val onTap: () -> Unit,
-)
-
-private class DangerArea(
-    val title: String,
-    val subtitle: String,
-    val enabled: Boolean,
-    val onDelete: () -> Unit,
-)
+private const val APPEARANCE = "appearance"
+private const val SECURITY = "security"
+private const val VAULT = "vault"
+private const val HISTORY = "history"
+private const val AGENT = "agent"
+private const val ABOUT = "about"
 
 @Composable
 fun SettingsPage(onLocked: () -> Unit) {
     val colors = appColors
-    val navigator = LocalNavigator.current
-    val scope = rememberCoroutineScope()
+    var selected by rememberSaveable { mutableStateOf(APPEARANCE) }
 
     var autoLogin by remember { mutableStateOf(false) }
     var autoLoginAvailable by remember { mutableStateOf(true) }
-
     LaunchedEffect(Unit) {
         val available = AutoLogin.isAvailable()
         autoLoginAvailable = available
         autoLogin = available && AutoLogin.isEnabled()
     }
 
-    val actions = listOf(
-        SettingsAction(
-            icon = Icons.Outlined.FileUpload,
-            color = colors.info,
-            title = "Export vault",
-            subtitle = "Save an encrypted copy",
-            onTap = {
-                scope.launch {
-                    try {
-                        val path = VaultStore.exportVault() ?: return@launch
-                        AppToasts.show("Exported to $path")
-                    } catch (failure: Exception) {
-                        Log.error("settings", "export failed", failure)
-                        AppToasts.show("Export failed: $failure")
-                    }
-                }
-            },
+    val hosts = VaultStore.hosts.size
+    val identities = VaultStore.identities.size
+    val past = HistoryStore.past.size
+    val sections = listOf(
+        EditorSection(APPEARANCE, "Appearance", Icons.Outlined.Palette, QAppThemeController.themeMode.label),
+        EditorSection(
+            SECURITY,
+            "Security",
+            Icons.Outlined.Shield,
+            if (autoLogin) "Unlocks automatically" else "Asks for the password",
         ),
-        SettingsAction(
-            icon = Icons.Outlined.FileDownload,
-            color = colors.success,
-            title = "Import vault",
-            subtitle = "Merge systems and users from a file",
-            onTap = {
-                scope.launch {
-                    try {
-                        val picked = FilePick.pickFile("Select a vault file") ?: return@launch
-                        val password = promptForPassword(
-                            message = "Enter the master password of the vault file you picked. " +
-                                "Matching entries are updated, new ones are added.",
-                            actionLabel = "Import",
-                        ) ?: return@launch
+        EditorSection(VAULT, "Vault", Icons.Outlined.Inventory2, "${count(hosts, "system")} · ${count(identities, "user")}"),
+        EditorSection(HISTORY, "History", Icons.Outlined.History, count(past, "connection")),
+        EditorSection(AGENT, "Agent", Icons.Outlined.SmartToy, AgentServer.endpoint ?: "Off"),
+        EditorSection(ABOUT, "About", Icons.Outlined.Info, "v$appVersion"),
+    )
 
-                        val summary = VaultStore.importVault(
-                            fileText = picked.bytes.decodeToString(),
-                            password = password,
-                        )
-                        AppToasts.show(
-                            if (summary.total == 0) {
-                                "Nothing new to import"
-                            } else {
-                                "Imported ${summary.hostsAdded} systems, " +
-                                    "${summary.identitiesAdded} users (" +
-                                    "${summary.hostsUpdated + summary.identitiesUpdated} updated)"
-                            },
-                        )
-                    } catch (_: WrongPasswordException) {
-                        Log.warn("settings", "import: wrong password for the chosen file")
-                        AppToasts.show("Wrong password for that file")
-                    } catch (failure: Exception) {
-                        Log.error("settings", "import failed", failure)
-                        AppToasts.show("Import failed: $failure")
+    QScaffold {
+        Column(Modifier.fillMaxSize()) {
+            Text(
+                "Settings",
+                style = TextStyle(color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.W700),
+                modifier = Modifier.padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 10.dp),
+            )
+            HorizontalDivider(color = colors.divider)
+            SectionedLayout(sections, selected, onSelect = { selected = it }) { id ->
+                when (id) {
+                    APPEARANCE -> AppearanceSection()
+                    SECURITY -> SecuritySection(
+                        autoLogin = autoLogin,
+                        autoLoginAvailable = autoLoginAvailable,
+                        onAutoLogin = { autoLogin = it },
+                        onLocked = onLocked,
+                    )
+                    VAULT -> VaultSection(onLocked)
+                    HISTORY -> HistorySection()
+                    AGENT -> AgentSection()
+                    ABOUT -> AboutSection()
+                }
+            }
+        }
+    }
+}
+
+private fun count(n: Int, noun: String): String = if (n == 1) "1 $noun" else "$n ${noun}s"
+
+@Composable
+private fun AppearanceSection() {
+    val colors = appColors
+    SettingsLabel("Theme", first = true)
+    SegmentedChoice(
+        options = listOf(
+            SegmentOption(QThemeMode.SYSTEM, "System", Icons.Outlined.WbAuto),
+            SegmentOption(QThemeMode.DARK, "Dark", Icons.Outlined.DarkMode),
+            SegmentOption(QThemeMode.LIGHT, "Light", Icons.Outlined.LightMode),
+        ),
+        selected = QAppThemeController.themeMode,
+        onSelect = { QAppThemeController.applyThemeMode(it) },
+    )
+    if (QAppThemeController.dynamicColorsSupported) {
+        SettingsLabel("Colors")
+        SettingsGroup {
+            SettingsToggle(
+                icon = Icons.Outlined.Palette,
+                tint = colors.accent,
+                title = "System colors",
+                description = "Follow the wallpaper palette",
+                checked = QAppThemeController.dynamicColors,
+                onChange = { QAppThemeController.applyDynamicColors(it) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecuritySection(
+    autoLogin: Boolean,
+    autoLoginAvailable: Boolean,
+    onAutoLogin: (Boolean) -> Unit,
+    onLocked: () -> Unit,
+) {
+    val colors = appColors
+    val scope = rememberCoroutineScope()
+
+    fun enableAutoLogin() {
+        scope.launch {
+            if (!autoLoginAvailable) {
+                val reason = AutoLogin.unavailableReason ?: "no usable keystore"
+                Log.warn("settings", "auto-unlock unavailable: $reason")
+                AppToasts.show(reason)
+                return@launch
+            }
+            promptForPassword(
+                message = "Confirm your master password to store it in this device's keystore. " +
+                    "The app will then open without asking.",
+                actionLabel = "Enable",
+                verify = { candidate ->
+                    if (!VaultStore.verifyPassword(candidate)) {
+                        "Wrong master password"
+                    } else {
+                        try {
+                            AutoLogin.enable(candidate)
+                            null
+                        } catch (failure: AutoLoginException) {
+                            failure.message
+                        } catch (failure: Exception) {
+                            Log.error("settings", "enabling auto-unlock failed", failure)
+                            "$failure"
+                        }
                     }
+                },
+            ) ?: return@launch
+            onAutoLogin(true)
+        }
+    }
+
+    SettingsLabel("Startup", first = true)
+    SettingsGroup {
+        SettingsToggle(
+            icon = if (autoLogin) Icons.Filled.LockOpen else Icons.Outlined.Lock,
+            tint = if (autoLogin) colors.success else colors.textMuted,
+            title = "Unlock automatically",
+            description = if (autoLogin) "Opens straight to your systems" else "Ask for the master password on every launch",
+            checked = autoLogin,
+            enabled = autoLoginAvailable || autoLogin,
+            warning = if (autoLoginAvailable) null else AutoLogin.unavailableReason,
+            onChange = { value ->
+                if (value) {
+                    enableAutoLogin()
+                } else {
+                    onAutoLogin(false)
+                    scope.launch { AutoLogin.disable() }
                 }
             },
-        ),
-        SettingsAction(
+        )
+    }
+
+    SettingsLabel("Master password")
+    SettingsGroup {
+        SettingsRow(
             icon = Icons.Filled.Password,
-            color = colors.warning,
+            tint = colors.warning,
             title = "Change master password",
-            subtitle = "Re-encrypts the vault in place",
-            onTap = {
+            description = "Re-encrypts the vault in place",
+            onClick = {
                 scope.launch {
-                    val next = promptForPassword(
-                        message = "Pick a new master password. The vault is re-encrypted in " +
-                            "place; existing exports keep their old password.",
+                    promptForPassword(
+                        message = "Pick a new master password. The vault is re-encrypted in place; " +
+                            "existing exports keep their old password.",
                         actionLabel = "Change",
                         confirm = true,
                         minLength = 8,
@@ -177,13 +270,15 @@ fun SettingsPage(onLocked: () -> Unit) {
                     AppToasts.show("Master password changed")
                 }
             },
-        ),
-        SettingsAction(
+        )
+        SettingsDivider()
+        SettingsRow(
             icon = Icons.Outlined.Lock,
-            color = colors.danger,
+            tint = colors.danger,
             title = "Lock now",
-            subtitle = "Closes every session, turns off auto-unlock and locks the app",
-            onTap = {
+            description = "Closes every session and turns auto-unlock off",
+            chevron = false,
+            onClick = {
                 scope.launch {
                     val confirmed = confirmDestructive(
                         title = "Lock the app?",
@@ -197,18 +292,136 @@ fun SettingsPage(onLocked: () -> Unit) {
                     onLocked()
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun VaultSection(onLocked: () -> Unit) {
+    val colors = appColors
+    val scope = rememberCoroutineScope()
+
+    InfoTable(
+        listOf(
+            "Systems" to "${VaultStore.hosts.size}",
+            "Users" to "${VaultStore.identities.size}",
+            "Serial" to "${VaultStore.serialDevices.size}",
+            "File" to Vault.defaultPath(),
         ),
     )
 
-    val historyActions = listOf(
-        SettingsAction(
+    SettingsLabel("Copies")
+    SettingsGroup {
+        SettingsRow(
             icon = Icons.Outlined.FileUpload,
-            color = colors.info,
-            title = "Export history",
-            subtitle = "Save an encrypted copy of past connections",
-            onTap = {
+            tint = colors.info,
+            title = "Export vault",
+            description = "Save an encrypted copy",
+            onClick = {
                 scope.launch {
-                    if (HistoryStore.connections.isEmpty()) {
+                    try {
+                        val path = VaultStore.exportVault() ?: return@launch
+                        AppToasts.show("Exported to $path")
+                    } catch (failure: Exception) {
+                        Log.error("settings", "export failed", failure)
+                        AppToasts.show("Export failed: $failure")
+                    }
+                }
+            },
+        )
+        SettingsDivider()
+        SettingsRow(
+            icon = Icons.Outlined.FileDownload,
+            tint = colors.success,
+            title = "Import vault",
+            description = "Merge systems and users from a file",
+            onClick = {
+                scope.launch {
+                    try {
+                        val picked = FilePick.pickFile("Select a vault file") ?: return@launch
+                        val password = promptForPassword(
+                            message = "Enter the master password of the vault file you picked. " +
+                                "Matching entries are updated, new ones are added.",
+                            actionLabel = "Import",
+                        ) ?: return@launch
+                        val summary = VaultStore.importVault(
+                            fileText = picked.bytes.decodeToString(),
+                            password = password,
+                        )
+                        AppToasts.show(
+                            if (summary.total == 0) {
+                                "Nothing new to import"
+                            } else {
+                                "Imported ${summary.hostsAdded} systems, ${summary.identitiesAdded} users " +
+                                    "(${summary.hostsUpdated + summary.identitiesUpdated} updated)"
+                            },
+                        )
+                    } catch (_: WrongPasswordException) {
+                        Log.warn("settings", "import: wrong password for the chosen file")
+                        AppToasts.show("Wrong password for that file")
+                    } catch (failure: Exception) {
+                        Log.error("settings", "import failed", failure)
+                        AppToasts.show("Import failed: $failure")
+                    }
+                }
+            },
+        )
+    }
+
+    SettingsLabel("Danger zone")
+    SettingsGroup {
+        SettingsRow(
+            icon = Icons.Filled.DeleteOutline,
+            tint = colors.danger,
+            title = "Delete vault",
+            description = "Every system, user, password and key on this device",
+            danger = true,
+            chevron = false,
+            onClick = {
+                scope.launch {
+                    val confirmed = confirmDestructive(
+                        title = "Delete the vault?",
+                        message = "The vault file and its history are deleted from this device for good, " +
+                            "and open sessions are closed. Without an export there is no way back.",
+                        actionLabel = "Delete",
+                    )
+                    if (!confirmed) return@launch
+                    SessionManager.closeAll()
+                    AutoLogin.disable()
+                    VaultStore.deleteVault()
+                    AppToasts.show("Vault deleted")
+                    onLocked()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun HistorySection() {
+    val colors = appColors
+    val scope = rememberCoroutineScope()
+    val connections = HistoryStore.connections
+    val commands = connections.sumOf { it.commands.size }
+
+    InfoTable(
+        listOf(
+            "Yours" to "${HistoryStore.clientPast.size}",
+            "Agent" to "${HistoryStore.agentPast.size}",
+            "Commands" to "$commands",
+        ),
+    )
+
+    SettingsLabel("Copies")
+    SettingsGroup {
+        SettingsRow(
+            icon = Icons.Outlined.FileUpload,
+            tint = colors.info,
+            title = "Export history",
+            description = "Save an encrypted copy of past connections",
+            onClick = {
+                scope.launch {
+                    if (connections.isEmpty()) {
                         AppToasts.show("No history to export")
                         return@launch
                     }
@@ -221,23 +434,22 @@ fun SettingsPage(onLocked: () -> Unit) {
                     }
                 }
             },
-        ),
-        SettingsAction(
+        )
+        SettingsDivider()
+        SettingsRow(
             icon = Icons.Outlined.FileDownload,
-            color = colors.success,
+            tint = colors.success,
             title = "Import history",
-            subtitle = "Merge past connections from a file",
-            onTap = {
+            description = "Merge past connections from a file",
+            onClick = {
                 scope.launch {
                     try {
                         val picked = FilePick.pickFile("Select a history file") ?: return@launch
                         val password = promptForPassword(
-                            message = "Enter the master password of the vault the history " +
-                                "file was exported beside. New connections are added, " +
-                                "existing ones are kept.",
+                            message = "Enter the master password of the vault the history file was " +
+                                "exported beside. New connections are added, existing ones are kept.",
                             actionLabel = "Import",
                         ) ?: return@launch
-
                         val added = HistoryStore.importHistory(
                             fileText = picked.bytes.decodeToString(),
                             password = password,
@@ -258,20 +470,24 @@ fun SettingsPage(onLocked: () -> Unit) {
                     }
                 }
             },
-        ),
-    )
+        )
+    }
 
-    val dangerAreas = listOf(
-        DangerArea(
-            title = "Connection history",
-            subtitle = "Every past connection and the commands run over it",
+    SettingsLabel("Danger zone")
+    SettingsGroup {
+        SettingsRow(
+            icon = Icons.Filled.DeleteSweep,
+            tint = colors.danger,
+            title = "Clear history",
+            description = "Every past connection and the commands run over it",
+            danger = true,
+            chevron = false,
             enabled = HistoryStore.past.isNotEmpty(),
-            onDelete = {
+            onClick = {
                 scope.launch {
                     val confirmed = confirmDestructive(
                         title = "Clear connection history?",
-                        message = "Every past connection and the commands " +
-                            "recorded over it will be forgotten.",
+                        message = "Every past connection and the commands recorded over it will be forgotten.",
                         actionLabel = "Clear",
                     )
                     if (!confirmed) return@launch
@@ -279,334 +495,75 @@ fun SettingsPage(onLocked: () -> Unit) {
                     AppToasts.show("Connection history cleared")
                 }
             },
-        ),
-        DangerArea(
-            title = "Vault",
-            subtitle = "The vault file with every system, user, password and key",
-            enabled = true,
-            onDelete = {
-                scope.launch {
-                    val confirmed = confirmDestructive(
-                        title = "Delete the vault?",
-                        message = "The vault file and its history are deleted from " +
-                            "this device for good, and open sessions are closed. " +
-                            "Without an export there is no way back.",
-                        actionLabel = "Delete",
-                    )
-                    if (!confirmed) return@launch
-                    SessionManager.closeAll()
-                    AutoLogin.disable()
-                    VaultStore.deleteVault()
-                    AppToasts.show("Vault deleted")
-                    onLocked()
-                }
-            },
-        ),
-    )
-
-    QScaffold {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(vertical = 10.dp),
-        ) {
-            GroupedCardList(
-                title = "Vault",
-                items = actions,
-                onTap = { action -> action.onTap },
-                itemBuilder = { action -> ActionRow(action) },
-            )
-
-            Spacer(Modifier.height(14.dp))
-            GroupedCardList(
-                title = "History",
-                items = historyActions,
-                onTap = { action -> action.onTap },
-                itemBuilder = { action -> ActionRow(action) },
-            )
-
-            Spacer(Modifier.height(14.dp))
-            GroupedCardList(
-                title = "Startup",
-                items = listOf(0),
-                itemBuilder = {
-                    AutoLoginRow(
-                        value = autoLogin,
-                        enabled = autoLoginAvailable,
-                        unavailableReason = if (autoLoginAvailable) {
-                            null
-                        } else {
-                            AutoLogin.unavailableReason
-                        },
-                        onChanged = { value ->
-                            scope.launch {
-                                if (!value) {
-                                    autoLogin = false
-                                    AutoLogin.disable()
-                                    return@launch
-                                }
-                                if (!autoLoginAvailable) {
-                                    val reason =
-                                        AutoLogin.unavailableReason ?: "no usable keystore"
-                                    Log.warn("settings", "auto-unlock unavailable: $reason")
-                                    AppToasts.show(reason)
-                                    return@launch
-                                }
-                                val password = promptForPassword(
-                                    message = "Confirm your master password to store it in this " +
-                                        "device's keystore. The app will then open without asking.",
-                                    actionLabel = "Enable",
-                                    verify = { candidate ->
-                                        if (!VaultStore.verifyPassword(candidate)) {
-                                            "Wrong master password"
-                                        } else {
-                                            try {
-                                                AutoLogin.enable(candidate)
-                                                null
-                                            } catch (failure: AutoLoginException) {
-                                                failure.message
-                                            } catch (failure: Exception) {
-                                                Log.error(
-                                                    "settings",
-                                                    "enabling auto-unlock failed",
-                                                    failure,
-                                                )
-                                                "$failure"
-                                            }
-                                        }
-                                    },
-                                ) ?: return@launch
-                                autoLogin = true
-                            }
-                        },
-                    )
-                },
-            )
-
-            Spacer(Modifier.height(14.dp))
-            GroupedCardList(
-                title = "Theme",
-                items = QThemeMode.entries,
-                onTap = { mode -> { QAppThemeController.applyThemeMode(mode) } },
-                itemBuilder = { mode ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            mode.label,
-                            modifier = Modifier.weight(1f),
-                            style = TextStyle(
-                                color = colors.textPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.W500,
-                            ),
-                        )
-                        Icon(
-                            if (QAppThemeController.themeMode == mode) {
-                                Icons.Filled.CheckCircle
-                            } else {
-                                Icons.Filled.Circle
-                            },
-                            contentDescription = null,
-                            tint = if (QAppThemeController.themeMode == mode) {
-                                colors.accent
-                            } else {
-                                colors.textMuted
-                            },
-                            modifier = Modifier.size(21.dp),
-                        )
-                    }
-                },
-            )
-
-            if (QAppThemeController.dynamicColorsSupported) {
-                Spacer(Modifier.height(14.dp))
-                GroupedCardList(
-                    items = listOf(0),
-                    itemBuilder = { DynamicColorsRow() },
-                )
-            }
-
-            Spacer(Modifier.height(14.dp))
-            GroupedCardList(
-                header = {
-                    Text(
-                        "Danger zone",
-                        style = TextStyle(
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.W600,
-                            color = colors.danger,
-                        ),
-                        modifier = Modifier.padding(
-                            start = 12.dp,
-                            top = 2.dp,
-                            end = 12.dp,
-                            bottom = 6.dp,
-                        ),
-                    )
-                },
-                items = dangerAreas,
-                itemBuilder = { area -> DangerRow(area) },
-            )
-
-            Spacer(Modifier.height(18.dp))
-            AppVersionLabel(
-                Modifier.pointerInput(Unit) {
-                    detectTapGestures(onLongPress = { navigator.push { IconGalleryPage() } })
-                },
-            )
-            Spacer(Modifier.height(10.dp))
-        }
+        )
     }
 }
 
 @Composable
-private fun AutoLoginRow(
-    value: Boolean,
-    enabled: Boolean,
-    unavailableReason: String?,
-    onChanged: (Boolean) -> Unit,
-) {
+private fun AgentSection() {
     val colors = appColors
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    val endpoint = AgentServer.endpoint
+    val live = SessionManager.sessions.count { it.agentOwned }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.card, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         QIconBadge(
-            icon = if (value) Icons.Filled.LockOpen else Icons.Outlined.Lock,
-            color = if (value) colors.success else colors.textMuted,
+            icon = if (appPlatform.isDesktop) Icons.Outlined.SmartToy else Icons.Outlined.PhoneAndroid,
+            color = if (endpoint != null) colors.success else colors.textMuted,
+            size = 30.dp,
+            iconSize = 18.dp,
         )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "Unlock automatically",
-                style = TextStyle(
-                    color = colors.textPrimary,
-                    fontSize = 14.sp,
-                    lineHeight = 17.sp,
-                    fontWeight = FontWeight.W600,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                unavailableReason ?: if (value) {
-                    "Opens straight to your systems"
-                } else {
-                    "Ask for the master password on every launch"
+                when {
+                    endpoint != null -> "Listening on $endpoint"
+                    appPlatform.isDesktop -> "Not listening"
+                    else -> "Desktop only"
                 },
-                maxLines = 3,
-                style = TextStyle(
-                    color = if (unavailableReason == null) colors.textMuted else colors.warning,
-                    fontSize = 12.sp,
-                    lineHeight = 15.sp,
-                ),
+                style = TextStyle(color = colors.textPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.W600),
+            )
+            Spacer(Modifier.height(1.dp))
+            Text(
+                when {
+                    endpoint != null && live > 0 -> "${count(live, "session")} open by an agent"
+                    endpoint != null -> "Loopback only. Point an MCP client at tools/ohmyssh-mcp."
+                    appPlatform.isDesktop -> "The port was taken when the app started"
+                    else -> "Agents connect to the desktop app"
+                },
+                style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 15.sp),
             )
         }
-        Switch(
-            checked = value,
-            onCheckedChange = if (enabled || value) onChanged else null,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = colors.onAccent,
-                checkedTrackColor = colors.accent,
-            ),
-        )
     }
+
+    SettingsLabel("${AppTools.specs.size} tools")
+    AgentToolList()
 }
 
 @Composable
-private fun DynamicColorsRow() {
-    val colors = appColors
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        QIconBadge(icon = Icons.Filled.Palette, color = colors.accent)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                "System colors",
-                style = TextStyle(
-                    color = colors.textPrimary,
-                    fontSize = 14.sp,
-                    lineHeight = 17.sp,
-                    fontWeight = FontWeight.W600,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                "Follow the phone's wallpaper palette",
-                style = TextStyle(
-                    color = colors.textMuted,
-                    fontSize = 12.sp,
-                    lineHeight = 15.sp,
-                ),
-            )
-        }
-        Switch(
-            checked = QAppThemeController.dynamicColors,
-            onCheckedChange = { QAppThemeController.applyDynamicColors(it) },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = colors.onAccent,
-                checkedTrackColor = colors.accent,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun DangerRow(area: DangerArea) {
-    val colors = appColors
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                area.title,
-                style = TextStyle(
-                    color = colors.textPrimary,
-                    fontSize = 14.sp,
-                    lineHeight = 16.8.sp,
-                    fontWeight = FontWeight.W500,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                area.subtitle,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 14.4.sp),
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        IconButton(onClick = area.onDelete, enabled = area.enabled) {
-            Icon(
-                Icons.Filled.DeleteOutline,
-                contentDescription = "Delete",
-                tint = if (area.enabled) colors.danger else colors.textMuted,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ActionRow(action: SettingsAction) {
-    val colors = appColors
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        QIconBadge(icon = action.icon, color = action.color)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                action.title,
-                style = TextStyle(
-                    color = colors.textPrimary,
-                    fontSize = 14.sp,
-                    lineHeight = 17.sp,
-                    fontWeight = FontWeight.W600,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                action.subtitle,
-                style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 14.4.sp),
-            )
-        }
-        Icon(
-            Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = colors.textMuted,
-            modifier = Modifier.size(20.dp),
-        )
-    }
+private fun AboutSection() {
+    val navigator = LocalNavigator.current
+    val tag = releaseTag()
+    InfoTable(
+        buildList {
+            add("Version" to appVersion)
+            add("Build" to tag.ifEmpty { "local" })
+            add("Platform" to appPlatform.displayName)
+            add("Data" to AppFiles.appSupportDirectory())
+            add("Log" to (Log.location ?: "stderr"))
+        },
+    )
+    Spacer(
+        Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(onLongPress = { navigator.push { IconGalleryPage() } })
+            },
+    )
 }

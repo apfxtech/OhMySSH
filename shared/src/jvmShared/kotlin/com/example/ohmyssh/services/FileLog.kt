@@ -52,6 +52,7 @@ object FileLog {
 
         file = target
         Log.sink = ::append
+        Log.location = target.path
         Log.info("log", "logging to ${target.path}${banner?.let { " $it" } ?: ""}")
         target.path
     }

@@ -22,8 +22,6 @@ import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,7 +33,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -178,13 +175,13 @@ fun PrivateKeyPanel(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            KeySourceButton("Import file", Icons.Outlined.FileOpen) {
+            SmallButton("Import file", Icons.Outlined.FileOpen) {
                 scope.launch {
                     val picked = FilePick.pickFile("Select a private key") ?: return@launch
                     accept(picked.bytes.decodeToString(), picked.name)
                 }
             }
-            KeySourceButton("Paste", Icons.Outlined.ContentPaste) {
+            SmallButton("Paste", Icons.Outlined.ContentPaste) {
                 val text = clipboard.getText()?.text
                 if (text.isNullOrBlank()) {
                     AppToasts.show("The clipboard is empty")
@@ -192,28 +189,12 @@ fun PrivateKeyPanel(
                     accept(text, "The clipboard")
                 }
             }
-            KeySourceButton("Type it in", Icons.Outlined.EditNote) {
+            SmallButton("Type it in", Icons.Outlined.EditNote) {
                 scope.launch {
                     val typed = promptForPrivateKey() ?: return@launch
                     onApply(typed)
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun KeySourceButton(label: String, icon: ImageVector, onClick: () -> Unit) {
-    val colors = appColors
-    OutlinedButton(
-        onClick = onClick,
-        shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp),
-        modifier = Modifier.height(30.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.accent),
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 12.5.sp)
     }
 }
