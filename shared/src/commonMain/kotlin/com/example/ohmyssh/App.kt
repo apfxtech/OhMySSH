@@ -30,7 +30,7 @@ import com.example.ohmyssh.theme.QAppThemeController
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.ui.DialogsHost
-import com.example.ohmyssh.widgets.RootScaffold
+import com.example.ohmyssh.widgets.AppShell
 import com.example.ohmyssh.widgets.RootTab
 
 suspend fun bootstrap(): Boolean {
@@ -83,7 +83,7 @@ fun App() {
                 LockPage(vaultExists = vaultExists, onUnlocked = { vaultExists = true })
             } else {
                 NavigationHost(navigator) {
-                    RootScaffold(
+                    AppShell(
                         currentTab = tab,
                         sessionCount = SessionManager.sessions.size,
                         onTabSelected = { tab = it },

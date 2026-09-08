@@ -12,24 +12,24 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.PersonAddAlt
 import androidx.compose.material.icons.outlined.AddLink
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Lan
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.VpnKey
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,17 +54,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ohmyssh.components.QIconBadge
 import com.example.ohmyssh.components.nameNetwork
 import com.example.ohmyssh.components.networkIcon
 import com.example.ohmyssh.components.networkLabel
-import com.example.ohmyssh.components.QPageAppBar
-import com.example.ohmyssh.components.QPageAppBarAction
-import com.example.ohmyssh.components.QScaffold
 import com.example.ohmyssh.data.AuthKind
 import com.example.ohmyssh.data.Host
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Circle
 import com.example.ohmyssh.data.HostGroup
 import com.example.ohmyssh.data.Identity
 import com.example.ohmyssh.data.VaultStore
@@ -75,25 +69,31 @@ import com.example.ohmyssh.net.networkKind
 import com.example.ohmyssh.theme.appColors
 import com.example.ohmyssh.ui.AppToasts
 import com.example.ohmyssh.widgets.CredentialsEditor
-import com.example.ohmyssh.widgets.PickOption
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import com.example.ohmyssh.widgets.QFormLabel
+import com.example.ohmyssh.widgets.DropdownAction
+import com.example.ohmyssh.widgets.DropdownField
+import com.example.ohmyssh.widgets.DropdownOption
+import com.example.ohmyssh.widgets.EditorScaffold
+import com.example.ohmyssh.widgets.EditorSection
+import com.example.ohmyssh.widgets.FieldGap
+import com.example.ohmyssh.widgets.FieldRow
 import com.example.ohmyssh.widgets.QSecretText
 import com.example.ohmyssh.widgets.QTextField
+import com.example.ohmyssh.widgets.SegmentOption
+import com.example.ohmyssh.widgets.SegmentedChoice
+import com.example.ohmyssh.widgets.SwitchSetting
 import com.example.ohmyssh.widgets.confirmDestructive
-import com.example.ohmyssh.widgets.pickFromList
 import com.example.ohmyssh.widgets.promptForText
 import com.example.ohmyssh.widgets.rememberCredentialsState
 import kotlinx.coroutines.launch
 
-private const val CREATE_SENTINEL = " new"
+private const val CONNECTION = "connection"
+private const val AUTH = "auth"
+private const val NETWORKS = "networks"
+private const val AGENT = "agent"
+private const val HOST_KEY = "hostKey"
 
-/**
- * Edits [host], or creates a system when it is null. [draft] pre-fills that new
- * system without saving anything — the network scan hands over a discovered
- * address this way, and the user still has to press save.
- */
+private enum class UserSource { SAVED, INLINE }
+
 @Composable
 fun HostEditorPage(host: Host?, draft: Host? = null) {
     val colors = appColors
@@ -102,6 +102,10 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
     val isNew = host == null
     val initial = host ?: draft
 
+    val id = remember(host?.id) { host?.id ?: newId() }
+    val inlineId = remember(host?.id) { host?.inlineIdentity?.id ?: newId() }
+
+    var section by rememberSaveable(host?.id) { mutableStateOf(CONNECTION) }
     var label by rememberSaveable(host?.id) { mutableStateOf(initial?.label ?: "") }
     var hostname by rememberSaveable(host?.id) { mutableStateOf(initial?.hostname ?: "") }
     var port by rememberSaveable(host?.id) { mutableStateOf("${initial?.port ?: 22}") }
@@ -115,6 +119,16 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
     var agentMayAuthenticate by rememberSaveable(host?.id) {
         mutableStateOf(initial?.agentMayAuthenticate ?: false)
     }
+    var source by rememberSaveable(host?.id) {
+        mutableStateOf(
+            when {
+                host?.identityId != null -> UserSource.SAVED
+                host != null -> UserSource.INLINE
+                VaultStore.identities.isNotEmpty() -> UserSource.SAVED
+                else -> UserSource.INLINE
+            },
+        )
+    }
     val networks = remember(host?.id) {
         mutableStateListOf<String>().apply { addAll(initial?.networks ?: emptyList()) }
     }
@@ -122,183 +136,228 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
 
     LaunchedEffect(Unit) { NetworkWatcher.refresh() }
 
-    suspend fun save() {
-        val trimmedHost = hostname.trim()
-        if (trimmedHost.isEmpty()) {
-            AppToasts.show("Hostname or IP is required")
-            return
-        }
-        val parsedPort = port.trim().toIntOrNull() ?: 22
-        if (parsedPort < 1 || parsedPort > 65535) {
-            AppToasts.show("Port must be 1–65535")
-            return
-        }
+    val parsedPort = port.trim().toIntOrNull()
+    val savedIdentity = if (source == UserSource.SAVED) VaultStore.identityById(identityId) else null
 
-        var inline: Identity? = null
-        if (identityId == null && !credentials.isEmpty) {
-            val problem = credentials.validate()
-            if (problem != null) {
-                AppToasts.show(problem)
-                return
-            }
-            inline = credentials.build(id = host?.inlineIdentity?.id ?: newId())
-        }
+    fun assemble(): Host = Host(
+        id = id,
+        label = label.trim(),
+        hostname = hostname.trim(),
+        port = parsedPort ?: 22,
+        identityId = if (source == UserSource.SAVED) identityId else null,
+        inlineIdentity = if (source == UserSource.INLINE && !credentials.isEmpty) {
+            credentials.build(id = inlineId)
+        } else {
+            null
+        },
+        groupId = groupId,
+        note = note.trim().ifEmpty { null },
+        knownHostKey = knownHostKey,
+        osId = host?.osId,
+        osPretty = host?.osPretty,
+        networks = networks.toList(),
+        agentEnabled = agentEnabled,
+        agentMayAuthenticate = agentEnabled && agentMayAuthenticate,
+    )
 
-        VaultStore.saveHost(
-            Host(
-                id = host?.id ?: newId(),
-                label = label.trim(),
-                hostname = trimmedHost,
-                port = parsedPort,
-                identityId = identityId,
-                inlineIdentity = inline,
-                groupId = groupId,
-                note = note.trim().ifEmpty { null },
-                knownHostKey = knownHostKey,
-                osId = host?.osId,
-                osPretty = host?.osPretty,
-                networks = networks.toList(),
-                agentEnabled = agentEnabled,
-                agentMayAuthenticate = agentEnabled && agentMayAuthenticate,
-            ),
-        )
-        navigator.pop()
+    val original = remember(host?.id) { initial ?: Host(id = id, label = "", hostname = "") }
+    val dirty = assemble() != original
+
+    fun problemIn(sectionId: String): String? = when (sectionId) {
+        CONNECTION -> when {
+            hostname.isBlank() -> "Hostname or IP is required"
+            parsedPort == null || parsedPort !in 1..65535 -> "Port must be 1–65535"
+            else -> null
+        }
+        AUTH -> when {
+            source == UserSource.SAVED && identityId != null && savedIdentity == null ->
+                "That user no longer exists"
+            source == UserSource.INLINE && !credentials.isEmpty -> credentials.validate()
+            else -> null
+        }
+        else -> null
     }
 
-    QScaffold(
-        appBar = {
-            QPageAppBar(
-                title = if (isNew) "New system" else "Edit system",
-                subtitle = if (isNew) null else host!!.endpoint,
-                actions = {
-                    if (!isNew) {
-                        QPageAppBarAction(
-                            tooltip = "Delete",
-                            icon = Icons.Outlined.Delete,
-                            onPressed = {
-                                scope.launch {
-                                    val confirmed = confirmDestructive(
-                                        title = "Delete system?",
-                                        message = "${host!!.displayLabel} will be removed from " +
-                                            "the vault.",
-                                    )
-                                    if (confirmed) {
-                                        VaultStore.deleteHost(host.id)
-                                        navigator.pop()
-                                    }
-                                }
-                            },
-                        )
-                    }
-                    QPageAppBarAction(
-                        tooltip = "Save",
-                        icon = Icons.Filled.Check,
-                        iconSize = 22.dp,
-                        onPressed = { scope.launch { save() } },
-                    )
-                },
-            )
+    val endpoint = if (parsedPort == null || parsedPort == 22) hostname.trim() else "${hostname.trim()}:$parsedPort"
+    val userLabel = when (source) {
+        UserSource.SAVED -> savedIdentity?.username
+        UserSource.INLINE -> credentials.username.trim().ifEmpty { null }
+    }
+    val authSummary = when {
+        source == UserSource.SAVED && savedIdentity != null ->
+            "${savedIdentity.label} · ${authWord(savedIdentity.kind)}"
+        source == UserSource.SAVED -> "No user chosen"
+        credentials.isEmpty -> "No login"
+        else -> "${credentials.username.trim()} · ${authWord(credentials.kind)}"
+    }
+
+    val sections = listOf(
+        EditorSection(
+            CONNECTION,
+            "Connection",
+            Icons.Outlined.Dns,
+            summary = endpoint.ifEmpty { "No address" },
+            problem = problemIn(CONNECTION),
+        ),
+        EditorSection(AUTH, "Authentication", Icons.Outlined.Key, authSummary, problemIn(AUTH)),
+        EditorSection(
+            NETWORKS,
+            "Networks",
+            Icons.Outlined.Lan,
+            summary = when (networks.size) {
+                0 -> "None recorded"
+                1 -> networkLabel(networks[0])
+                else -> "${networks.size} networks"
+            },
+        ),
+        EditorSection(
+            AGENT,
+            "Agent",
+            Icons.Outlined.SmartToy,
+            summary = when {
+                !agentEnabled -> "No access"
+                agentMayAuthenticate -> "Access, may request the password"
+                else -> "Access"
+            },
+        ),
+        EditorSection(
+            HOST_KEY,
+            "Host key",
+            Icons.Outlined.Fingerprint,
+            summary = if (knownHostKey == null) "Not pinned" else "Pinned",
+        ),
+    )
+
+    fun save() {
+        for (candidate in sections) {
+            val problem = problemIn(candidate.id) ?: continue
+            section = candidate.id
+            AppToasts.show(problem)
+            return
+        }
+        scope.launch {
+            VaultStore.saveHost(assemble())
+            navigator.pop()
+        }
+    }
+
+    EditorScaffold(
+        title = if (isNew) "New system" else label.trim().ifEmpty { hostname.trim() }.ifEmpty { "System" },
+        subtitle = when {
+            endpoint.isEmpty() -> null
+            userLabel == null -> endpoint
+            else -> "$userLabel@$endpoint"
         },
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 14.dp, top = 6.dp, end = 14.dp, bottom = 28.dp),
-        ) {
-            QFormLabel("Connection")
-            QTextField(
-                value = label,
-                onValueChange = { label = it },
-                label = "Name",
-                hint = "Shown on the card",
-                autofocus = isNew,
-            )
-            Spacer(Modifier.height(10.dp))
-            QTextField(
-                value = hostname,
-                onValueChange = { hostname = it },
-                label = "Hostname or IP",
-                hint = "10.0.0.5 or box.local",
-            )
-            Spacer(Modifier.height(10.dp))
-            QTextField(
-                value = port,
-                onValueChange = { port = it },
-                label = "Port",
-                digitsOnly = true,
-            )
-
-            QFormLabel("User")
-            PickerCard(
-                icon = Icons.Outlined.Person,
-                title = identityLabel(identityId),
-                subtitle = when {
-                    identityId != null -> "Tap to change, or clear it to type a login here"
-                    VaultStore.identities.isEmpty() ->
-                        "No saved users yet — type a login below, or tap to create one"
-                    else -> "Tap to reuse a saved user, or type a login below"
-                },
-                onTap = {
-                    scope.launch {
-                        val selected = pickFromList(
-                            title = "Assign user",
-                            current = identityId,
-                            options = buildList {
-                                add(
-                                    PickOption(
-                                        CREATE_SENTINEL,
-                                        "New user…",
-                                        icon = Icons.Filled.PersonAddAlt,
-                                        isAction = true,
-                                    ),
-                                )
-                                add(
-                                    PickOption(
-                                        null,
-                                        "No saved user",
-                                        subtitle = "Type the login on this system",
-                                        icon = Icons.Outlined.Edit,
-                                    ),
-                                )
-                                for (identity in VaultStore.identities) {
-                                    add(
-                                        PickOption(
-                                            identity.id,
-                                            identity.label,
-                                            subtitle = "${identity.username} · " +
-                                                if (identity.kind == AuthKind.PRIVATE_KEY) {
-                                                    "private key"
-                                                } else {
-                                                    "password"
-                                                },
-                                            icon = if (identity.kind == AuthKind.PRIVATE_KEY) {
-                                                Icons.Outlined.VpnKey
-                                            } else {
-                                                Icons.Filled.Password
-                                            },
-                                        ),
-                                    )
-                                }
-                            },
-                        ) ?: return@launch
-
-                        if (selected.value == CREATE_SENTINEL) {
-                            val created = navigator.pushForResult<Identity> {
-                                IdentityEditorPage(null)
-                            }
-                            if (created != null) identityId = created.id
-                            return@launch
-                        }
-                        identityId = selected.value
+        sections = sections,
+        selected = section,
+        onSelect = { section = it },
+        dirty = dirty,
+        onSave = ::save,
+        onDelete = if (isNew) {
+            null
+        } else {
+            {
+                scope.launch {
+                    val confirmed = confirmDestructive(
+                        title = "Delete system?",
+                        message = "${host!!.displayLabel} will be removed from the vault.",
+                    )
+                    if (confirmed) {
+                        VaultStore.deleteHost(host.id)
+                        navigator.pop()
                     }
-                },
-            )
-            if (identityId == null) {
-                Spacer(Modifier.height(12.dp))
-                CredentialsEditor(credentials)
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                }
+            }
+        },
+    ) { current ->
+        when (current) {
+            CONNECTION -> {
+                QTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = "Name",
+                    hint = "Shown on the card",
+                    autofocus = isNew,
+                )
+                FieldGap()
+                FieldRow {
+                    QTextField(
+                        value = hostname,
+                        onValueChange = { hostname = it },
+                        label = "Hostname or IP",
+                        hint = "10.0.0.5 or box.local",
+                        modifier = Modifier.weight(3f),
+                    )
+                    QTextField(
+                        value = port,
+                        onValueChange = { port = it },
+                        label = "Port",
+                        digitsOnly = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                FieldGap()
+                DropdownField(
+                    label = "Group",
+                    value = groupId,
+                    options = buildList {
+                        add(DropdownOption(null, "Ungrouped", icon = Icons.Filled.Block))
+                        for (group in VaultStore.groups) {
+                            add(DropdownOption(group.id, group.name, icon = Icons.Outlined.Folder))
+                        }
+                    },
+                    onSelect = { groupId = it },
+                    actions = listOf(
+                        DropdownAction("New group…", Icons.Outlined.CreateNewFolder) {
+                            scope.launch {
+                                val name = promptForText(
+                                    title = "New group",
+                                    label = "Group name",
+                                    actionLabel = "Create",
+                                )
+                                if (name.isNullOrEmpty()) return@launch
+                                val group = HostGroup(id = newId(), name = name)
+                                VaultStore.saveGroup(group)
+                                groupId = group.id
+                            }
+                        },
+                    ),
+                )
+                FieldGap()
+                QTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = "Notes",
+                    maxLines = 4,
+                )
+            }
+
+            AUTH -> {
+                SegmentedChoice(
+                    options = listOf(
+                        SegmentOption(UserSource.SAVED, "Saved user"),
+                        SegmentOption(UserSource.INLINE, "Login on this system"),
+                    ),
+                    selected = source,
+                    onSelect = { source = it },
+                )
+                FieldGap()
+                if (source == UserSource.SAVED) {
+                    SavedUserPicker(
+                        identityId = identityId,
+                        onPick = { identityId = it },
+                        onCreate = {
+                            scope.launch {
+                                val created = navigator.pushForResult<Identity> {
+                                    IdentityEditorPage(null)
+                                }
+                                if (created != null) identityId = created.id
+                            }
+                        },
+                    )
+                } else {
+                    CredentialsEditor(credentials, autofocusUsername = isNew)
+                    Spacer(Modifier.height(4.dp))
                     TextButton(
                         onClick = {
                             scope.launch {
@@ -313,184 +372,128 @@ fun HostEditorPage(host: Host?, draft: Host? = null) {
                                     initial = credentials.username.trim(),
                                     actionLabel = "Save",
                                 ) ?: return@launch
-
                                 val identity = credentials.build(id = newId(), label = name)
                                 VaultStore.saveIdentity(identity)
                                 identityId = identity.id
+                                source = UserSource.SAVED
                                 AppToasts.show("${identity.label} added to Users")
                             }
                         },
                         colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
                     ) {
-                        Icon(
-                            Icons.Outlined.BookmarkAdd,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Also save to Users")
+                        Icon(Icons.Outlined.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Also save to Users", fontSize = 13.sp)
                     }
                 }
             }
 
-            QFormLabel("Group")
-            PickerCard(
-                icon = Icons.Outlined.Folder,
-                title = VaultStore.groupById(groupId)?.name ?: "Ungrouped",
-                subtitle = "Groups become sections on the systems list",
-                onTap = {
-                    scope.launch {
-                        val selected = pickFromList(
-                            title = "Assign group",
-                            current = groupId,
-                            options = buildList {
-                                add(
-                                    PickOption(
-                                        CREATE_SENTINEL,
-                                        "New group…",
-                                        icon = Icons.Outlined.CreateNewFolder,
-                                        isAction = true,
-                                    ),
-                                )
-                                add(PickOption(null, "Ungrouped", icon = Icons.Filled.Block))
-                                for (group in VaultStore.groups) {
-                                    add(
-                                        PickOption(
-                                            group.id,
-                                            group.name,
-                                            icon = Icons.Outlined.Folder,
-                                        ),
-                                    )
-                                }
-                            },
-                        ) ?: return@launch
-
-                        if (selected.value == CREATE_SENTINEL) {
-                            val name = promptForText(
-                                title = "New group",
-                                label = "Group name",
-                                actionLabel = "Create",
-                            )
-                            if (name.isNullOrEmpty()) return@launch
-                            val group = HostGroup(id = newId(), name = name)
-                            VaultStore.saveGroup(group)
-                            groupId = group.id
-                            return@launch
-                        }
-                        groupId = selected.value
-                    }
+            NETWORKS -> NetworksSection(
+                networks = networks,
+                onRename = { key -> scope.launch { nameNetwork(key) } },
+                onRemove = { networks.remove(it) },
+                onAdd = { key ->
+                    networks.add(0, key)
+                    scope.launch { NetworkWatcher.currentTag() }
                 },
             )
 
-            // Nothing to show and nothing to add: a device with no network at
-            // all gets no empty section for one.
-            if (networks.isNotEmpty() || NetworkWatcher.current != null) {
-                QFormLabel("Networks")
-                NetworksCard(
-                    networks = networks,
-                    onRename = { id -> scope.launch { nameNetwork(id) } },
-                    onRemove = { networks.remove(it) },
-                    onAdd = { key ->
-                        networks.add(0, key)
-                        // Saved now rather than on the next connect, or the chip
-                        // would have nothing but a router MAC to call itself by.
-                        scope.launch { NetworkWatcher.currentTag() }
+            AGENT -> {
+                SwitchSetting(
+                    title = "Allow agent access",
+                    description = "An AI agent may open this system and run commands on it",
+                    checked = agentEnabled,
+                    onChange = {
+                        agentEnabled = it
+                        if (!it) agentMayAuthenticate = false
                     },
+                )
+                SwitchSetting(
+                    title = "Agent may request the password",
+                    description = "The agent can ask the app to type this login's password at a " +
+                        "sudo prompt. It never receives or sees the password itself.",
+                    checked = agentMayAuthenticate,
+                    enabled = agentEnabled,
+                    onChange = { agentMayAuthenticate = it },
                 )
             }
 
-            QFormLabel("Notes")
-            QTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = "Notes",
-                maxLines = 3,
+            HOST_KEY -> HostKeySection(
+                fingerprint = knownHostKey,
+                onForget = { knownHostKey = null },
             )
+        }
+    }
+}
 
-            QFormLabel("Agent")
-            AgentSwitchRow(
-                title = "Allow agent access",
-                subtitle = "An AI agent may open this system and run commands on it",
-                checked = agentEnabled,
-                onChanged = {
-                    agentEnabled = it
-                    // Letting the password survive the access toggle would leave
-                    // a system that grants sudo the moment access comes back on.
-                    if (!it) agentMayAuthenticate = false
-                },
-            )
-            AgentSwitchRow(
-                title = "Agent may request the password",
-                subtitle = "The agent can ask the app to type this login's password at a " +
-                    "sudo prompt. It never receives or sees the password itself.",
-                checked = agentMayAuthenticate,
-                enabled = agentEnabled,
-                onChanged = { agentMayAuthenticate = it },
-            )
+private fun authWord(kind: AuthKind): String =
+    if (kind == AuthKind.PRIVATE_KEY) "private key" else "password"
 
-            val pinned = knownHostKey
-            if (pinned != null) {
-                QFormLabel("Host key")
-                HostKeyCard(fingerprint = pinned, onForget = { knownHostKey = null })
+@Composable
+private fun SavedUserPicker(
+    identityId: String?,
+    onPick: (String?) -> Unit,
+    onCreate: () -> Unit,
+) {
+    val colors = appColors
+    val navigator = LocalNavigator.current
+    val identities = VaultStore.identities
+
+    if (identities.isEmpty()) {
+        Button(
+            onClick = onCreate,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = colors.accent,
+                contentColor = colors.onAccent,
+            ),
+        ) {
+            Icon(Icons.Filled.PersonAddAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("New user", fontSize = 13.sp)
+        }
+        return
+    }
+
+    DropdownField(
+        label = "User",
+        value = identityId,
+        options = buildList {
+            add(DropdownOption<String?>(null, "Choose a user"))
+            for (identity in identities) {
+                add(
+                    DropdownOption(
+                        identity.id,
+                        identity.label,
+                        detail = "${identity.username} · ${authWord(identity.kind)}",
+                        icon = if (identity.kind == AuthKind.PRIVATE_KEY) {
+                            Icons.Outlined.VpnKey
+                        } else {
+                            Icons.Filled.Password
+                        },
+                    ),
+                )
+            }
+        },
+        onSelect = onPick,
+        actions = listOf(DropdownAction("New user…", Icons.Filled.PersonAddAlt, onCreate)),
+    )
+    val chosen = VaultStore.identityById(identityId)
+    if (chosen != null) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+            TextButton(
+                onClick = { navigator.push { IdentityEditorPage(chosen) } },
+                colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+            ) {
+                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Edit ${chosen.label}", fontSize = 13.sp)
             }
         }
     }
 }
 
-private fun identityLabel(identityId: String?): String {
-    if (identityId == null) return "No saved user"
-    val identity = VaultStore.identityById(identityId) ?: return "Missing user"
-    return "${identity.label} (${identity.username})"
-}
-
 @Composable
-internal fun PickerCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    onTap: () -> Unit,
-) {
-    val colors = appColors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(colors.card, RoundedCornerShape(12.dp))
-            .clickable(onClick = onTap)
-            .padding(start = 12.dp, top = 10.dp, end = 10.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        QIconBadge(icon = icon, color = colors.info)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = TextStyle(
-                    color = colors.textPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.W600,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(subtitle, style = TextStyle(color = colors.textMuted, fontSize = 12.sp))
-        }
-        Icon(
-            Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = colors.textMuted,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-/**
- * The networks this system answers on. Filled in on every connect, so the manual
- * side is mostly correcting: dropping the coffee shop it was reached from once,
- * or naming a network the OS would only give up as a subnet.
- */
-@Composable
-private fun NetworksCard(
+private fun NetworksSection(
     networks: List<String>,
     onRename: (String) -> Unit,
     onRemove: (String) -> Unit,
@@ -499,139 +502,105 @@ private fun NetworksCard(
     val colors = appColors
     val current = NetworkWatcher.current
 
-    Column(Modifier.fillMaxWidth()) {
-        if (networks.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth().background(colors.card, RoundedCornerShape(12.dp))) {
-                for (id in networks) {
-                    val here = NetworkWatcher.current?.key == id
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onRename(id) }
-                            .padding(start = 12.dp, top = 7.dp, end = 6.dp, bottom = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+    if (networks.isEmpty() && current == null) {
+        Text(
+            "Recorded on every connect",
+            style = TextStyle(color = colors.textMuted, fontSize = 13.sp),
+        )
+        return
+    }
+    if (networks.isNotEmpty()) {
+        Column(Modifier.fillMaxWidth().background(colors.card, RoundedCornerShape(10.dp))) {
+            for (key in networks) {
+                val here = current?.key == key
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onRename(key) }
+                        .padding(start = 12.dp, top = 6.dp, end = 4.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        networkIcon(networkKind(key)),
+                        contentDescription = null,
+                        tint = if (here) colors.accent else colors.textMuted,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        networkLabel(key),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                        style = TextStyle(
+                            color = if (here) colors.accent else colors.textPrimary,
+                            fontSize = 13.5.sp,
+                            fontWeight = if (here) FontWeight.W600 else FontWeight.W500,
+                        ),
+                    )
+                    IconButton(onClick = { onRemove(key) }, modifier = Modifier.size(32.dp)) {
                         Icon(
-                            networkIcon(networkKind(id)),
-                            contentDescription = null,
-                            tint = if (here) colors.accent else colors.textMuted,
-                            modifier = Modifier.size(16.dp),
+                            Icons.Filled.Close,
+                            contentDescription = "Remove ${networkLabel(key)}",
+                            tint = colors.textMuted,
+                            modifier = Modifier.size(15.dp),
                         )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            networkLabel(id),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                            style = TextStyle(
-                                color = if (here) colors.accent else colors.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = if (here) FontWeight.W600 else FontWeight.W500,
-                            ),
-                        )
-                        IconButton(onClick = { onRemove(id) }) {
-                            Icon(
-                                Icons.Filled.Close,
-                                contentDescription = "Remove ${networkLabel(id)}",
-                                tint = colors.textMuted,
-                                modifier = Modifier.size(15.dp),
-                            )
-                        }
                     }
                 }
             }
         }
-        if (current != null && networks.none { it == current.key }) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                TextButton(
-                    onClick = { onAdd(current.key) },
-                    colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
-                ) {
-                    Icon(
-                        Icons.Outlined.AddLink,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add ${networkLabel(current.key)}")
-                }
-            }
+    }
+    if (current != null && networks.none { it == current.key }) {
+        Spacer(Modifier.height(4.dp))
+        TextButton(
+            onClick = { onAdd(current.key) },
+            colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+        ) {
+            Icon(Icons.Outlined.AddLink, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Add ${networkLabel(current.key)}", fontSize = 13.sp)
         }
     }
 }
 
 @Composable
-private fun HostKeyCard(fingerprint: String, onForget: () -> Unit) {
+private fun HostKeySection(fingerprint: String?, onForget: () -> Unit) {
     val colors = appColors
     val clipboard = LocalClipboardManager.current
-    Column(Modifier.fillMaxWidth()) {
-        QSecretText(
-            fingerprint,
-            style = TextStyle(
-                color = colors.textPrimary,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.card, RoundedCornerShape(12.dp))
-                .padding(12.dp),
-        )
-        Spacer(Modifier.height(2.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(
-                onClick = {
-                    clipboard.setText(AnnotatedString(fingerprint))
-                    AppToasts.show("Host key copied")
-                },
-                contentPadding = PaddingValues(horizontal = 10.dp),
-                colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
-                modifier = Modifier.height(32.dp),
-            ) { Text("Copy", fontSize = 13.sp) }
-            TextButton(
-                onClick = onForget,
-                contentPadding = PaddingValues(horizontal = 10.dp),
-                colors = ButtonDefaults.textButtonColors(contentColor = colors.danger),
-                modifier = Modifier.height(32.dp),
-            ) { Text("Forget", fontSize = 13.sp) }
-        }
-    }
-}
 
-@Composable
-private fun AgentSwitchRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onChanged: (Boolean) -> Unit,
-    enabled: Boolean = true,
-) {
-    val colors = appColors
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = TextStyle(
-                    color = if (enabled) colors.textPrimary else colors.textMuted,
-                    fontSize = 14.sp,
-                    lineHeight = 17.sp,
-                    fontWeight = FontWeight.W600,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 15.sp),
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = if (enabled) onChanged else null,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = colors.onAccent,
-                checkedTrackColor = colors.accent,
-            ),
+    if (fingerprint == null) {
+        Text(
+            "Pinned on the first connect",
+            style = TextStyle(color = colors.textMuted, fontSize = 13.sp),
         )
+        return
+    }
+    QSecretText(
+        fingerprint,
+        style = TextStyle(
+            color = colors.textPrimary,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.card, RoundedCornerShape(10.dp))
+            .padding(12.dp),
+    )
+    Spacer(Modifier.height(2.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+        TextButton(
+            onClick = {
+                clipboard.setText(AnnotatedString(fingerprint))
+                AppToasts.show("Host key copied")
+            },
+            contentPadding = PaddingValues(horizontal = 10.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+        ) { Text("Copy", fontSize = 13.sp) }
+        TextButton(
+            onClick = onForget,
+            contentPadding = PaddingValues(horizontal = 10.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = colors.danger),
+        ) { Text("Forget", fontSize = 13.sp) }
     }
 }

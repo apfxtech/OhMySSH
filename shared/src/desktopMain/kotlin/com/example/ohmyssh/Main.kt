@@ -24,7 +24,7 @@ fun main() {
             onCloseRequest = ::exitApplication,
             title = "ohmyssh",
             icon = painterResource("app-icon.png"),
-            state = rememberWindowState(width = 480.dp, height = 820.dp),
+            state = rememberWindowState(width = 1180.dp, height = 800.dp),
         ) {
             App()
         }

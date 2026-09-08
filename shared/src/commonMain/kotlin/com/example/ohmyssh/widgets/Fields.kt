@@ -27,7 +27,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
@@ -91,7 +90,7 @@ fun QTextField(
             // left transparent and the outline still breaks around the text.
             Text(
                 label,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 modifier = Modifier.drawBehind {
                     val pad = 4.dp.toPx()
                     drawRect(
@@ -102,7 +101,7 @@ fun QTextField(
                 },
             )
         },
-        placeholder = hint?.let { { Text(it, fontSize = 14.sp, color = colors.textMuted) } },
+        placeholder = hint?.let { { Text(it, fontSize = 13.5.sp, color = colors.textMuted) } },
         trailingIcon = if (obscure) {
             {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -151,37 +150,15 @@ fun QTextField(
             },
         ),
         keyboardActions = KeyboardActions(onDone = { onSubmitted?.invoke(value) }),
-        textStyle = TextStyle(color = colors.textPrimary, fontSize = 15.sp),
+        textStyle = TextStyle(color = colors.textPrimary, fontSize = 14.sp),
         shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = colors.card,
-            unfocusedContainerColor = colors.card,
-            focusedBorderColor = colors.accent,
-            unfocusedBorderColor = colors.divider,
-            focusedLabelColor = colors.textMuted,
-            unfocusedLabelColor = colors.textMuted,
-            cursorColor = colors.accent,
-        ),
+        colors = appTextFieldColors(),
         modifier = modifier.fillMaxWidth().focusRequester(focusRequester),
     )
 
     if (autofocus) {
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
-}
-
-@Composable
-fun QFormLabel(text: String) {
-    Text(
-        text.uppercase(),
-        style = TextStyle(
-            color = appColors.textMuted,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.W700,
-            letterSpacing = 0.6.sp,
-        ),
-        modifier = Modifier.padding(start = 2.dp, top = 18.dp, end = 2.dp, bottom = 8.dp),
-    )
 }
 
 @Composable
