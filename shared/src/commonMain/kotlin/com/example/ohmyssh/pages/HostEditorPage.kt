@@ -1,6 +1,15 @@
 package com.example.ohmyssh.pages
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.example.ohmyssh.components.QIconBadge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -79,7 +88,6 @@ import com.example.ohmyssh.widgets.EditorSection
 import com.example.ohmyssh.widgets.FieldGap
 import com.example.ohmyssh.widgets.FieldGroupTitle
 import com.example.ohmyssh.widgets.FieldRow
-import com.example.ohmyssh.widgets.QSecretText
 import com.example.ohmyssh.widgets.QTextField
 import com.example.ohmyssh.widgets.SegmentOption
 import com.example.ohmyssh.widgets.SegmentedChoice
@@ -600,44 +608,93 @@ private fun NetworksSection(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HostKeySection(fingerprint: String?, onForget: () -> Unit) {
     val colors = appColors
     val clipboard = LocalClipboardManager.current
+    var revealed by remember { mutableStateOf(false) }
+    val pinned = fingerprint != null
 
-    if (fingerprint == null) {
-        Text(
-            "Pinned on the first connect",
-            style = TextStyle(color = colors.textMuted, fontSize = 13.sp),
-        )
-        return
-    }
-    QSecretText(
-        fingerprint,
-        style = TextStyle(
-            color = colors.textPrimary,
-            fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
-        ),
-        modifier = Modifier
+    Column(
+        Modifier
             .fillMaxWidth()
-            .background(colors.card, RoundedCornerShape(10.dp))
-            .padding(12.dp),
-    )
-    Spacer(Modifier.height(2.dp))
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-        TextButton(
-            onClick = {
+            .background(colors.card, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            QIconBadge(
+                icon = Icons.Outlined.Fingerprint,
+                color = if (pinned) colors.success else colors.textMuted,
+                size = 30.dp,
+                iconSize = 18.dp,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (pinned) "Pinned on first connect" else "Not pinned yet",
+                modifier = Modifier.weight(1f),
+                style = TextStyle(
+                    color = if (pinned) colors.textPrimary else colors.textMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                ),
+            )
+            if (pinned) {
+                TextButton(
+                    onClick = {
+                        revealed = false
+                        onForget()
+                    },
+                    contentPadding = PaddingValues(horizontal = 10.dp),
+                    modifier = Modifier.height(30.dp),
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.danger),
+                ) { Text("Forget", fontSize = 12.5.sp) }
+            }
+        }
+        if (fingerprint == null) return@Column
+        if (revealed) {
+            Spacer(Modifier.height(8.dp))
+            SelectionContainer {
+                Text(
+                    fingerprint,
+                    style = TextStyle(
+                        color = colors.textPrimary,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(color = colors.divider)
+        Spacer(Modifier.height(8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            SmallOutlinedButton(
+                label = if (revealed) "Hide" else "Show",
+                icon = if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+            ) { revealed = !revealed }
+            SmallOutlinedButton("Copy", Icons.Outlined.ContentCopy) {
                 clipboard.setText(AnnotatedString(fingerprint))
                 AppToasts.show("Host key copied")
-            },
-            contentPadding = PaddingValues(horizontal = 10.dp),
-            colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
-        ) { Text("Copy", fontSize = 13.sp) }
-        TextButton(
-            onClick = onForget,
-            contentPadding = PaddingValues(horizontal = 10.dp),
-            colors = ButtonDefaults.textButtonColors(contentColor = colors.danger),
-        ) { Text("Forget", fontSize = 13.sp) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmallOutlinedButton(label: String, icon: ImageVector, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        modifier = Modifier.height(30.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = appColors.accent),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, fontSize = 12.5.sp)
     }
 }
