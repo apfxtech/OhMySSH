@@ -2,6 +2,7 @@ package com.example.ohmyssh.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
@@ -223,22 +225,28 @@ fun LazyGridScope.gridSection(key: Any, content: @Composable () -> Unit) {
 }
 
 @Composable
-fun GridSectionTitle(text: String, count: Int, modifier: Modifier = Modifier) {
+fun GridSectionTitle(text: String, count: Int, onClick: (() -> Unit)? = null) {
     val colors = appColors
-    Row(
-        modifier.padding(top = 8.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text,
-            style = TextStyle(
-                color = colors.textSecondary,
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.W700,
-            ),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text("$count", style = TextStyle(color = colors.textMuted, fontSize = 12.sp))
+    Box(Modifier.padding(top = 6.dp)) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick))
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text,
+                style = TextStyle(
+                    color = colors.textSecondary,
+                    fontSize = 12.5.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.W700,
+                ),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text("$count", style = TextStyle(color = colors.textMuted, fontSize = 12.sp, lineHeight = 16.sp))
+        }
     }
 }
 

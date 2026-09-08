@@ -1,19 +1,16 @@
 package com.example.ohmyssh.pages
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Usb
@@ -211,26 +208,24 @@ private fun NothingMatches(query: String) {
 @Composable
 private fun GroupTitle(group: HostGroup?, count: Int) {
     val scope = rememberCoroutineScope()
-    val modifier = if (group == null) {
-        Modifier
-    } else {
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .clickable {
+    GridSectionTitle(
+        text = group?.name ?: "Ungrouped",
+        count = count,
+        onClick = group?.let { saved ->
+            {
                 scope.launch {
                     val name = promptForText(
                         title = "Rename group",
                         label = "Group name",
-                        initial = group.name,
+                        initial = saved.name,
                     )
-                    if (!name.isNullOrEmpty() && name != group.name) {
-                        VaultStore.saveGroup(group.copy(name = name))
+                    if (!name.isNullOrEmpty() && name != saved.name) {
+                        VaultStore.saveGroup(saved.copy(name = name))
                     }
                 }
             }
-            .padding(horizontal = 4.dp)
-    }
-    GridSectionTitle(group?.name ?: "Ungrouped", count, modifier)
+        },
+    )
 }
 
 @Composable
